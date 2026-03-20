@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Lasso drag rectangle — subtle dashed outline */
+.react-flow__selection {
+  background: rgba(59, 130, 246, 0.05) !important;
+  border: 1px dashed rgba(59, 130, 246, 0.4) !important;
+}
+
+/* Hide the bounding box around multi-selected nodes */
+.react-flow__nodesselection-rect {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Selected node styling — blue outline matching node border-radius */
+.react-flow__node.selected > div,
+.react-flow__node.selected > div:first-child {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+/* Handle bump — 3 concentric circles: outer ring (color), dark middle, inner dot (color) */
+.react-flow__handle {
+  z-index: 1;
+}
+
+/* Outer colored ring */
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  background: var(--handle-color, #a78bfa);
+  border-radius: 50%;
+  z-index: -2;
+}
+
+/* Dark middle ring */
+.react-flow__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background: #1a1a1a;
+  border-radius: 50%;
+  z-index: -1;
+}
+
+/* Purple handles */
+.react-flow__handle.handle-purple {
+  --handle-color: #a78bfa;
+}
+
+/* Green handles */
+.react-flow__handle.handle-green {
+  --handle-color: #34d399;
+}

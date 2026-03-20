@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ruby --version)",
+      "Bash(rails --version)",
+      "Bash(npm --version)",
+      "Bash(rails new:*)",
+      "Bash(bin/rails generate:*)",
+      "Bash(bundle add:*)",
+      "Bash(bin/rails db:migrate 2>&1)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(bin/rails routes:*)",
+      "Bash(bin/rails runner:*)"
+    ]
+  }
+}
