@@ -6,7 +6,12 @@ Rails.application.routes.draw do
 
   resources :projects, only: [ :index, :show, :create, :update, :destroy ] do
     post "canvas/save", to: "canvas#save"
+    post "canvas/operations", to: "canvas#operations"
   end
+
+  post "generate/image", to: "generate#image"
+  get "node_images/:id", to: "node_images#show"
+  get "nodes/:node_id/images", to: "node_images#index"
 
   get "up" => "rails/health#show", as: :rails_health_check
 end

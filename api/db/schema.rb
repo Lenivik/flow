@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_20_061708) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_21_035444) do
   create_table "edges", force: :cascade do |t|
     t.integer "project_id", null: false
     t.integer "source_node_id", null: false
@@ -22,6 +22,17 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_20_061708) do
     t.index ["project_id"], name: "index_edges_on_project_id"
     t.index ["source_node_id"], name: "index_edges_on_source_node_id"
     t.index ["target_node_id"], name: "index_edges_on_target_node_id"
+  end
+
+  create_table "node_images", force: :cascade do |t|
+    t.integer "node_id", null: false
+    t.text "image_data"
+    t.string "mime_type"
+    t.text "prompt"
+    t.text "negative_prompt"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["node_id"], name: "index_node_images_on_node_id"
   end
 
   create_table "nodes", force: :cascade do |t|
@@ -64,6 +75,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_20_061708) do
   add_foreign_key "edges", "nodes", column: "source_node_id"
   add_foreign_key "edges", "nodes", column: "target_node_id"
   add_foreign_key "edges", "projects"
+  add_foreign_key "node_images", "nodes"
   add_foreign_key "nodes", "projects"
   add_foreign_key "projects", "users"
   add_foreign_key "sessions", "users"
