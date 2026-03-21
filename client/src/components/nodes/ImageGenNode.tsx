@@ -1,7 +1,11 @@
 import { memo } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, useHandleConnections, type NodeProps } from '@xyflow/react'
 
 function ImageGenNode({ data }: NodeProps) {
+  const promptConnections = useHandleConnections({ type: 'target', id: 'prompt' })
+  const negativeConnections = useHandleConnections({ type: 'target', id: 'negative_prompt' })
+  const resultConnections = useHandleConnections({ type: 'source', id: 'result' })
+
   return (
     <div className="bg-neutral-900 rounded-xl shadow-2xl min-w-[320px] max-w-[400px]">
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50">
@@ -52,7 +56,7 @@ function ImageGenNode({ data }: NodeProps) {
         type="target"
         position={Position.Left}
         id="prompt"
-        className="!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple"
+        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
         style={{ top: '35%' }}
         title="Prompt"
       />
@@ -60,7 +64,7 @@ function ImageGenNode({ data }: NodeProps) {
         type="target"
         position={Position.Left}
         id="negative_prompt"
-        className="!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple"
+        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${negativeConnections.length > 0 ? 'connected' : ''}`}
         style={{ top: '55%' }}
         title="Negative Prompt"
       />
@@ -74,7 +78,7 @@ function ImageGenNode({ data }: NodeProps) {
         type="source"
         position={Position.Right}
         id="result"
-        className="!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-right-[7px] handle-green"
+        className={`!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-right-[7px] handle-green ${resultConnections.length > 0 ? 'connected' : ''}`}
         title="Result"
       />
       <div className="absolute right-3 text-[10px] text-emerald-300 font-medium" style={{ top: 'calc(50% - 6px)', textAlign: 'right' }}>Result</div>

@@ -28,10 +28,16 @@ const nodeTypes = {
   export: ExportNode,
 }
 
+const handleColors: Record<string, string> = {
+  prompt: '#a78bfa',
+  negative_prompt: '#a78bfa',
+  result: '#34d399',
+  input: '#34d399',
+}
+
 const defaultEdgeOptions = {
-  style: { stroke: '#6b21a8', strokeWidth: 2 },
-  type: 'smoothstep',
-  animated: true,
+  style: { stroke: '#a78bfa', strokeWidth: 2 },
+  type: 'bezier',
 }
 
 function CanvasInner() {
@@ -45,6 +51,7 @@ function CanvasInner() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const [spaceHeld, setSpaceHeld] = useState(false)
   const prevToolMode = useRef<ToolMode>('select')
+  const [connectionLineColor, setConnectionLineColor] = useState('#a78bfa')
 
   // Load canvas data
   useEffect(() => {
@@ -115,9 +122,18 @@ function CanvasInner() {
     )
   }, [setNodes])
 
+  const onConnectStart = useCallback(
+    (_: unknown, params: { handleId: string | null }) => {
+      const color = handleColors[params.handleId || ''] || '#a78bfa'
+      setConnectionLineColor(color)
+    },
+    [],
+  )
+
   const onConnect = useCallback(
     (params: Connection) => {
-      setEdges((eds) => addEdge(params, eds))
+      const color = handleColors[params.sourceHandle || ''] || '#a78bfa'
+      setEdges((eds) => addEdge({ ...params, style: { stroke: color, strokeWidth: 2 } }, eds))
     },
     [setEdges],
   )
@@ -154,9 +170,11 @@ function CanvasInner() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnectStart={onConnectStart}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
+        connectionLineStyle={{ stroke: connectionLineColor, strokeWidth: 2 }}
         panOnDrag={toolMode === 'hand' ? true : [1, 2]}
         selectionOnDrag={toolMode === 'select'}
         selectionMode={SelectionMode.Partial}

@@ -117,7 +117,7 @@ export default function CanvasToolbar({ toolMode, onToolModeChange, onAddNode }:
             {tool.submenu && (
               <button
                 onClick={() => setOpenMenu(openMenu === tool.id ? null : tool.id)}
-                className="p-1 text-neutral-500 hover:text-neutral-300 transition-colors -ml-1"
+                className="p-1 text-neutral-500 hover:text-neutral-300 transition-colors ml-0.5"
               >
                 <ChevronDown size={10} />
               </button>

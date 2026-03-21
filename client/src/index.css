@@ -70,3 +70,8 @@ body {
 .react-flow__handle.handle-green {
   --handle-color: #34d399;
 }
+
+/* Connected handle — fill the dark middle ring with the handle color */
+.react-flow__handle.connected::after {
+  background: var(--handle-color, #a78bfa);
+}

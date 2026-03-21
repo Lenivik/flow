@@ -1,7 +1,9 @@
 import { memo, useCallback } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, useHandleConnections, type NodeProps } from '@xyflow/react'
 
 function TextPromptNode({ id, data }: NodeProps) {
+  const promptConnections = useHandleConnections({ type: 'source', id: 'prompt' })
+
   const onChange = useCallback(
     (evt: React.ChangeEvent<HTMLTextAreaElement>) => {
       if (data.onChange) {
@@ -36,7 +38,7 @@ function TextPromptNode({ id, data }: NodeProps) {
         type="source"
         position={Position.Right}
         id="prompt"
-        className="!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-right-[7px] handle-purple"
+        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-right-[7px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
         title="Prompt"
       />
     </div>
