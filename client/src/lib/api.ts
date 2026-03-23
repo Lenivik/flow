@@ -46,4 +46,23 @@ export const api = {
 
   saveCanvas: (projectId: string, data: { nodes: unknown[]; edges: unknown[] }) =>
     request(`/projects/${projectId}/canvas/save`, { method: 'POST', body: JSON.stringify(data) }),
+
+  generateImage: (prompt: string, negativePrompt?: string, nodeId?: string) =>
+    request('/generate/image', { method: 'POST', body: JSON.stringify({ prompt, negative_prompt: negativePrompt, node_id: nodeId }) }),
+
+  sendOperations: (projectId: string, operations: unknown[]) =>
+    request(`/projects/${projectId}/canvas/operations`, { method: 'POST', body: JSON.stringify({ operations }) }),
+
+  beaconOperations: (projectId: string, operations: unknown[]) => {
+    const token = localStorage.getItem('token')
+    const blob = new Blob([JSON.stringify({ operations, token })], { type: 'application/json' })
+    navigator.sendBeacon(`${BASE}/projects/${projectId}/canvas/operations`, blob)
+  },
+
+  getNodeImages: (nodeId: string) => request(`/nodes/${nodeId}/images`),
+
+  nodeImageUrl: (imageId: number) => {
+    const token = localStorage.getItem('token')
+    return `${BASE}/node_images/${imageId}?token=${token}`
+  },
 }

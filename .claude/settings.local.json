@@ -13,7 +13,9 @@
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
       "Bash(bin/rails routes:*)",
-      "Bash(bin/rails runner:*)"
+      "Bash(bin/rails runner:*)",
+      "Bash(ls:*)",
+      "Bash(EDITOR=\"cat\" bin/rails credentials:edit 2>&1)"
     ]
   }
 }

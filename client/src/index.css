@@ -75,3 +75,14 @@ body {
 .react-flow__handle.connected::after {
   background: var(--handle-color, #a78bfa);
 }
+
+/* Edge selection — wider invisible hit area for clicking */
+.react-flow__edge {
+  cursor: pointer;
+}
+
+/* Selected edge glow */
+.react-flow__edge.selected path {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px currentColor);
+}
