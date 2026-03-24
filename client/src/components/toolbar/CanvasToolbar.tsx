@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { MousePointer2, Hand, Type, ImageIcon, Wrench, ChevronDown } from 'lucide-react'
+import { MousePointer2, Hand, Type, ImageIcon, Wrench, ChevronDown, Box } from 'lucide-react'
 
 export type ToolMode = 'select' | 'hand'
 
@@ -77,6 +77,15 @@ export default function CanvasToolbar({ toolMode, onToolModeChange, onAddNode }:
       label: 'Image Models',
       submenu: [
         { label: 'Google Nano Banana', action: () => onAddNode('imageGen') },
+        { label: 'Relight 2.0', action: () => onAddNode('relight') },
+      ],
+    },
+    {
+      id: '3d',
+      icon: <Box size={18} />,
+      label: '3D Models',
+      submenu: [
+        { label: 'Trellis', action: () => onAddNode('trellis') },
       ],
     },
     {
@@ -84,6 +93,7 @@ export default function CanvasToolbar({ toolMode, onToolModeChange, onAddNode }:
       icon: <Wrench size={18} />,
       label: 'Utilities',
       submenu: [
+        { label: 'BG Removal', action: () => onAddNode('bgRemoval') },
         { label: 'Export', action: () => onAddNode('export') },
       ],
     },

@@ -10,14 +10,21 @@ function ExportNode({ id, data }: NodeProps) {
   const { setNodes, setEdges, getNode } = useReactFlow()
   const locked = !!data.locked
 
-  const sourceNode = inputConnections.length > 0 ? getNode(inputConnections[0].source) : null
-  const imageUrl = (sourceNode?.data as Record<string, unknown>)?.imageUrl as string | undefined
+  const getImageUrl = () => {
+    if (inputConnections.length === 0) return undefined
+    const sourceNode = getNode(inputConnections[0].source)
+    return (sourceNode?.data as Record<string, unknown>)?.imageUrl as string | undefined
+  }
+
+  const imageUrl = getImageUrl()
 
   const handleDownload = async () => {
-    if (!imageUrl) return
+    // Re-read at download time to always get the latest image
+    const currentUrl = getImageUrl()
+    if (!currentUrl) return
     setDownloading(true)
     try {
-      const res = await fetch(imageUrl)
+      const res = await fetch(currentUrl)
       const blob = await res.blob()
       const ext = blob.type.split('/')[1] || 'png'
       const url = URL.createObjectURL(blob)

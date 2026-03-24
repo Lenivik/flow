@@ -1,9 +1,12 @@
 class GoogleImageGenerator
   API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
 
-  def initialize(prompt:, negative_prompt: nil)
+  def initialize(prompt:, negative_prompt: nil, aspect_ratio: nil, resolution: nil, image_size: nil)
     @prompt = prompt
     @negative_prompt = negative_prompt
+    @aspect_ratio = aspect_ratio
+    @resolution = resolution
+    @image_size = image_size
   end
 
   def call
@@ -13,12 +16,21 @@ class GoogleImageGenerator
     full_prompt = @prompt
     full_prompt += "\n\nAvoid: #{@negative_prompt}" if @negative_prompt.present?
 
+    generation_config = {
+      responseModalities: [ "TEXT", "IMAGE" ]
+    }
+
+    image_config = {}
+    image_config[:aspectRatio] = @aspect_ratio if @aspect_ratio.present?
+    image_config[:imageSize] = @resolution if @resolution.present?
+    generation_config[:imageConfig] = image_config if image_config.present?
+
     response = HTTParty.post(
       "#{API_URL}?key=#{api_key}",
       headers: { "Content-Type" => "application/json" },
       body: {
         contents: [ { parts: [ { text: full_prompt } ] } ],
-        generationConfig: { responseModalities: [ "TEXT", "IMAGE" ] }
+        generationConfig: generation_config
       }.to_json,
       timeout: 60
     )

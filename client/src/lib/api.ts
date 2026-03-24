@@ -47,8 +47,8 @@ export const api = {
   saveCanvas: (projectId: string, data: { nodes: unknown[]; edges: unknown[] }) =>
     request(`/projects/${projectId}/canvas/save`, { method: 'POST', body: JSON.stringify(data) }),
 
-  generateImage: (prompt: string, negativePrompt?: string, nodeId?: string) =>
-    request('/generate/image', { method: 'POST', body: JSON.stringify({ prompt, negative_prompt: negativePrompt, node_id: nodeId }) }),
+  generateImage: (prompt: string, negativePrompt?: string, nodeId?: string, settings?: Record<string, string>) =>
+    request('/generate/image', { method: 'POST', body: JSON.stringify({ prompt, negative_prompt: negativePrompt, node_id: nodeId, ...settings }) }),
 
   sendOperations: (projectId: string, operations: unknown[]) =>
     request(`/projects/${projectId}/canvas/operations`, { method: 'POST', body: JSON.stringify({ operations }) }),
@@ -58,6 +58,12 @@ export const api = {
     const blob = new Blob([JSON.stringify({ operations, token })], { type: 'application/json' })
     navigator.sendBeacon(`${BASE}/projects/${projectId}/canvas/operations`, blob)
   },
+
+  removeBg: (sourceImageId: number, nodeId?: string) =>
+    request('/generate/remove_bg', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId }) }),
+
+  generateTrellis: (sourceImageId: number, nodeId?: string, settings?: Record<string, unknown>) =>
+    request('/generate/trellis', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId, ...settings }) }),
 
   getNodeImages: (nodeId: string) => request(`/nodes/${nodeId}/images`),
 

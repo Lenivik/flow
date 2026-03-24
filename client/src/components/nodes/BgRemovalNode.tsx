@@ -2,15 +2,13 @@ import { memo, useState, useRef, useEffect } from 'react'
 import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
 import { Loader2, Lock, ChevronLeft, ChevronRight, Grid3X3, Maximize2 } from 'lucide-react'
 import NodeContextMenu from './NodeContextMenu'
-import { SettingsDropdown } from './NodeSettings'
 
 const IMAGE_WIDTH = 320
 
 type HistoryEntry = { id: number; url: string }
 
-function ImageGenNode({ id, data }: NodeProps) {
-  const promptConnections = useNodeConnections({ handleType: 'target', handleId: 'prompt' })
-  const negativeConnections = useNodeConnections({ handleType: 'target', handleId: 'negative_prompt' })
+function BgRemovalNode({ id, data }: NodeProps) {
+  const inputConnections = useNodeConnections({ handleType: 'target', handleId: 'input' })
   const resultConnections = useNodeConnections({ handleType: 'source', handleId: 'result' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,17 +19,10 @@ function ImageGenNode({ id, data }: NodeProps) {
   const prevImageUrl = useRef<string | undefined>(undefined)
   const { setNodes, setEdges, getNode } = useReactFlow()
   const locked = !!data.locked
-  const debugSettings = !!data.debugSettings
   const d = data as Record<string, unknown>
 
   const history = (d.imageHistory as HistoryEntry[]) || []
   const imageIndex = (d.imageIndex as number) ?? history.length - 1
-
-  const update = (key: string, value: unknown) => {
-    setNodes((nds) =>
-      nds.map((n) => n.id === id ? { ...n, data: { ...n.data, [key]: value } } : n),
-    )
-  }
 
   const navigateImage = (newIndex: number) => {
     if (newIndex < 0 || newIndex >= history.length) return
@@ -47,10 +38,10 @@ function ImageGenNode({ id, data }: NodeProps) {
   }
 
   const handleRunModel = () => {
-    if (data.onRunModel) {
+    if (d.onRunBgRemoval) {
       setLoading(true)
       setError(null)
-      ;(data.onRunModel as (nodeId: string) => Promise<string | null>)(id)
+      ;(d.onRunBgRemoval as (nodeId: string) => Promise<string | null>)(id)
         .then((err) => { if (err) setError(err) })
         .finally(() => setLoading(false))
     }
@@ -59,15 +50,14 @@ function ImageGenNode({ id, data }: NodeProps) {
   const handleDuplicate = () => {
     const node = getNode(id)
     if (!node) return
-    const newNode = {
+    setNodes((nds) => [...nds, {
       ...node,
       id: `temp_${Date.now()}`,
       position: { x: node.position.x + 50, y: node.position.y + 50 },
       selected: false,
       data: { ...node.data, imageUrl: undefined, locked: false, imageHistory: [], imageIndex: 0 },
       draggable: true,
-    }
-    setNodes((nds) => [...nds, newNode])
+    }])
     setMenuOpen(false)
   }
 
@@ -85,9 +75,8 @@ function ImageGenNode({ id, data }: NodeProps) {
     setMenuOpen(false)
   }
 
-  const imageUrl = data.imageUrl as string | undefined
+  const imageUrl = d.imageUrl as string | undefined
 
-  // Reset when a new image URL appears
   useEffect(() => {
     if (imageUrl && imageUrl !== prevImageUrl.current) {
       setImageLoaded(false)
@@ -99,15 +88,13 @@ function ImageGenNode({ id, data }: NodeProps) {
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
     const aspect = img.naturalHeight / img.naturalWidth
-    const targetHeight = Math.round(IMAGE_WIDTH * aspect)
     requestAnimationFrame(() => {
-      setImageHeight(targetHeight)
+      setImageHeight(Math.round(IMAGE_WIDTH * aspect))
       setImageLoaded(true)
     })
   }
 
-  const placeholderHeight = 192
-  const containerHeight = imageHeight ?? placeholderHeight
+  const containerHeight = imageHeight ?? 160
   const hasHistory = history.length > 1
   const canGoBack = imageIndex > 0
   const canGoForward = imageIndex < history.length - 1
@@ -117,7 +104,7 @@ function ImageGenNode({ id, data }: NodeProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50">
         <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
           {locked && <Lock size={12} className="text-neutral-500" />}
-          Google Nano Banana
+          BG Removal
         </span>
         <div className="relative">
           <button onClick={() => setMenuOpen(!menuOpen)} className="text-neutral-500 hover:text-neutral-300 transition-colors">
@@ -140,10 +127,8 @@ function ImageGenNode({ id, data }: NodeProps) {
         </div>
       </div>
 
-      {/* Image preview area */}
       <div className="p-4">
         {gridView && history.length > 0 ? (
-          /* Grid view */
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-1.5 nowheel nodrag">
               {history.map((entry, i) => (
@@ -165,7 +150,6 @@ function ImageGenNode({ id, data }: NodeProps) {
             </button>
           </div>
         ) : (
-          /* Single view */
           <div className="relative group">
             <div
               className="w-full rounded-lg overflow-hidden"
@@ -188,19 +172,14 @@ function ImageGenNode({ id, data }: NodeProps) {
               {imageUrl && (
                 <img
                   src={imageUrl}
-                  alt="Generated"
+                  alt="BG Removed"
                   onLoad={handleImageLoad}
                   className="w-full rounded-lg"
-                  style={{
-                    opacity: imageLoaded ? 1 : 0,
-                    transition: 'opacity 0.3s ease-in',
-                  }}
+                  style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.3s ease-in' }}
                 />
               )}
             </div>
 
-            {/* Navigation arrows — shown on hover when history exists */}
-            {/* Top bar: arrows, counter, grid toggle */}
             {hasHistory && imageUrl && (
               <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
@@ -234,46 +213,12 @@ function ImageGenNode({ id, data }: NodeProps) {
         )}
       </div>
 
-      {/* Inline settings (debug mode) */}
-      {debugSettings && (
-        <div className="px-4 pb-3 space-y-3 nodrag nowheel">
-          <div className="grid grid-cols-2 gap-2">
-            <SettingsDropdown
-              label="Resolution"
-              value={(d.resolution as string) || '1K'}
-              onChange={(v) => update('resolution', v)}
-              options={[
-                { value: '1K', label: '1K' },
-                { value: '2K', label: '2K' },
-                { value: '4K', label: '4K' },
-              ]}
-            />
-            <SettingsDropdown
-              label="Aspect Ratio"
-              value={(d.aspectRatio as string) || '1:1'}
-              onChange={(v) => update('aspectRatio', v)}
-              options={[
-                { value: '1:1', label: '1:1' },
-                { value: '4:3', label: '4:3' },
-                { value: '3:4', label: '3:4' },
-                { value: '16:9', label: '16:9' },
-                { value: '9:16', label: '9:16' },
-                { value: '3:2', label: '3:2' },
-                { value: '2:3', label: '2:3' },
-              ]}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Error message */}
       {error && (
         <div className="px-4 pb-2">
           <p className="text-[11px] text-red-400">{error}</p>
         </div>
       )}
 
-      {/* Run Model button */}
       <div className="px-4 pb-4">
         <button
           onClick={handleRunModel}
@@ -283,36 +228,26 @@ function ImageGenNode({ id, data }: NodeProps) {
           {loading ? (
             <>
               <Loader2 size={14} className="animate-spin" />
-              Generating...
+              Processing...
             </>
           ) : (
-            'Run Model'
+            'Remove Background'
           )}
         </button>
+        {inputConnections.length === 0 && !imageUrl && (
+          <p className="text-[10px] text-neutral-500 mt-2 text-center">Connect an image output to process</p>
+        )}
       </div>
 
-      {/* Input handles */}
       <Handle
         type="target"
         position={Position.Left}
-        id="prompt"
-        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
-        style={{ top: '35%' }}
-        title="Prompt"
+        id="input"
+        className={`!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-left-[7px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
+        title="Input"
       />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="negative_prompt"
-        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${negativeConnections.length > 0 ? 'connected' : ''}`}
-        style={{ top: '55%' }}
-        title="Negative Prompt"
-      />
+      <div className="absolute left-3 text-[10px] text-emerald-300 font-medium" style={{ top: 'calc(50% - 6px)' }}>Input</div>
 
-      <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(35% - 6px)' }}>Prompt</div>
-      <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(55% - 6px)' }}>Negative</div>
-
-      {/* Output handle */}
       <Handle
         type="source"
         position={Position.Right}
@@ -325,4 +260,4 @@ function ImageGenNode({ id, data }: NodeProps) {
   )
 }
 
-export default memo(ImageGenNode)
+export default memo(BgRemovalNode)

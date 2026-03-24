@@ -2,13 +2,14 @@ import { memo, useState, useRef, useEffect } from 'react'
 import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
 import { Loader2, Lock, ChevronLeft, ChevronRight, Grid3X3, Maximize2 } from 'lucide-react'
 import NodeContextMenu from './NodeContextMenu'
-import { SettingsDropdown } from './NodeSettings'
+import { SettingsSlider, SettingsDropdown, SettingsCheck } from './NodeSettings'
 
 const IMAGE_WIDTH = 320
 
 type HistoryEntry = { id: number; url: string }
 
-function ImageGenNode({ id, data }: NodeProps) {
+function RelightNode({ id, data }: NodeProps) {
+  const d = data as Record<string, unknown>
   const promptConnections = useNodeConnections({ handleType: 'target', handleId: 'prompt' })
   const negativeConnections = useNodeConnections({ handleType: 'target', handleId: 'negative_prompt' })
   const resultConnections = useNodeConnections({ handleType: 'source', handleId: 'result' })
@@ -20,12 +21,19 @@ function ImageGenNode({ id, data }: NodeProps) {
   const [gridView, setGridView] = useState(false)
   const prevImageUrl = useRef<string | undefined>(undefined)
   const { setNodes, setEdges, getNode } = useReactFlow()
-  const locked = !!data.locked
-  const debugSettings = !!data.debugSettings
-  const d = data as Record<string, unknown>
+  const locked = !!d.locked
+  const debugSettings = !!d.debugSettings
 
   const history = (d.imageHistory as HistoryEntry[]) || []
   const imageIndex = (d.imageIndex as number) ?? history.length - 1
+
+  const defaults: Record<string, unknown> = {
+    imageSize: 'square_hd', inferenceSteps: 28, randomSeed: true, seed: 42,
+    initialLatent: 'none', enableHRFix: true, cfg: 1, lowResDenoise: 0.98,
+    highResDenoise: 0.95, hrDownscale: 0.5, guidanceScale: 5,
+    enableSafetyChecker: true, outputFormat: 'png',
+  }
+  const v = (key: string) => d[key] !== undefined ? d[key] : defaults[key]
 
   const update = (key: string, value: unknown) => {
     setNodes((nds) =>
@@ -47,10 +55,10 @@ function ImageGenNode({ id, data }: NodeProps) {
   }
 
   const handleRunModel = () => {
-    if (data.onRunModel) {
+    if (d.onRunModel) {
       setLoading(true)
       setError(null)
-      ;(data.onRunModel as (nodeId: string) => Promise<string | null>)(id)
+      ;(d.onRunModel as (nodeId: string) => Promise<string | null>)(id)
         .then((err) => { if (err) setError(err) })
         .finally(() => setLoading(false))
     }
@@ -59,15 +67,14 @@ function ImageGenNode({ id, data }: NodeProps) {
   const handleDuplicate = () => {
     const node = getNode(id)
     if (!node) return
-    const newNode = {
+    setNodes((nds) => [...nds, {
       ...node,
       id: `temp_${Date.now()}`,
       position: { x: node.position.x + 50, y: node.position.y + 50 },
       selected: false,
       data: { ...node.data, imageUrl: undefined, locked: false, imageHistory: [], imageIndex: 0 },
       draggable: true,
-    }
-    setNodes((nds) => [...nds, newNode])
+    }])
     setMenuOpen(false)
   }
 
@@ -85,9 +92,8 @@ function ImageGenNode({ id, data }: NodeProps) {
     setMenuOpen(false)
   }
 
-  const imageUrl = data.imageUrl as string | undefined
+  const imageUrl = d.imageUrl as string | undefined
 
-  // Reset when a new image URL appears
   useEffect(() => {
     if (imageUrl && imageUrl !== prevImageUrl.current) {
       setImageLoaded(false)
@@ -99,15 +105,13 @@ function ImageGenNode({ id, data }: NodeProps) {
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
     const aspect = img.naturalHeight / img.naturalWidth
-    const targetHeight = Math.round(IMAGE_WIDTH * aspect)
     requestAnimationFrame(() => {
-      setImageHeight(targetHeight)
+      setImageHeight(Math.round(IMAGE_WIDTH * aspect))
       setImageLoaded(true)
     })
   }
 
-  const placeholderHeight = 192
-  const containerHeight = imageHeight ?? placeholderHeight
+  const containerHeight = imageHeight ?? 160
   const hasHistory = history.length > 1
   const canGoBack = imageIndex > 0
   const canGoForward = imageIndex < history.length - 1
@@ -117,7 +121,7 @@ function ImageGenNode({ id, data }: NodeProps) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50">
         <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
           {locked && <Lock size={12} className="text-neutral-500" />}
-          Google Nano Banana
+          Relight 2.0
         </span>
         <div className="relative">
           <button onClick={() => setMenuOpen(!menuOpen)} className="text-neutral-500 hover:text-neutral-300 transition-colors">
@@ -140,10 +144,8 @@ function ImageGenNode({ id, data }: NodeProps) {
         </div>
       </div>
 
-      {/* Image preview area */}
       <div className="p-4">
         {gridView && history.length > 0 ? (
-          /* Grid view */
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-1.5 nowheel nodrag">
               {history.map((entry, i) => (
@@ -165,7 +167,6 @@ function ImageGenNode({ id, data }: NodeProps) {
             </button>
           </div>
         ) : (
-          /* Single view */
           <div className="relative group">
             <div
               className="w-full rounded-lg overflow-hidden"
@@ -191,16 +192,11 @@ function ImageGenNode({ id, data }: NodeProps) {
                   alt="Generated"
                   onLoad={handleImageLoad}
                   className="w-full rounded-lg"
-                  style={{
-                    opacity: imageLoaded ? 1 : 0,
-                    transition: 'opacity 0.3s ease-in',
-                  }}
+                  style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.3s ease-in' }}
                 />
               )}
             </div>
 
-            {/* Navigation arrows — shown on hover when history exists */}
-            {/* Top bar: arrows, counter, grid toggle */}
             {hasHistory && imageUrl && (
               <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
@@ -239,41 +235,74 @@ function ImageGenNode({ id, data }: NodeProps) {
         <div className="px-4 pb-3 space-y-3 nodrag nowheel">
           <div className="grid grid-cols-2 gap-2">
             <SettingsDropdown
-              label="Resolution"
-              value={(d.resolution as string) || '1K'}
-              onChange={(v) => update('resolution', v)}
+              label="Image Size"
+              value={v('imageSize') as string}
+              onChange={(val) => update('imageSize', val)}
               options={[
-                { value: '1K', label: '1K' },
-                { value: '2K', label: '2K' },
-                { value: '4K', label: '4K' },
+                { value: 'square', label: 'Square' },
+                { value: 'square_hd', label: 'Square HD' },
+                { value: 'portrait_4_3', label: 'Portrait 4:3' },
+                { value: 'portrait_16_9', label: 'Portrait 16:9' },
+                { value: 'landscape_4_3', label: 'Landscape 4:3' },
+                { value: 'landscape_16_9', label: 'Landscape 16:9' },
               ]}
             />
             <SettingsDropdown
-              label="Aspect Ratio"
-              value={(d.aspectRatio as string) || '1:1'}
-              onChange={(v) => update('aspectRatio', v)}
+              label="Output Format"
+              value={v('outputFormat') as string}
+              onChange={(val) => update('outputFormat', val)}
               options={[
-                { value: '1:1', label: '1:1' },
-                { value: '4:3', label: '4:3' },
-                { value: '3:4', label: '3:4' },
-                { value: '16:9', label: '16:9' },
-                { value: '9:16', label: '9:16' },
-                { value: '3:2', label: '3:2' },
-                { value: '2:3', label: '2:3' },
+                { value: 'png', label: 'PNG' },
+                { value: 'jpeg', label: 'JPEG' },
+                { value: 'webp', label: 'WebP' },
               ]}
             />
+          </div>
+
+          <SettingsSlider label="Inference Steps" value={v('inferenceSteps') as number} min={1} max={100} step={1} onChange={(val) => update('inferenceSteps', val)} tooltip="Number of denoising steps" />
+
+          <SettingsCheck label="Random Seed" checked={v('randomSeed') as boolean} onChange={(val) => update('randomSeed', val)} tooltip="Use a random seed each run">
+            <input
+              type="number"
+              value={v('seed') as number}
+              onChange={(e) => { const n = parseInt(e.target.value); if (!isNaN(n)) update('seed', n) }}
+              disabled={v('randomSeed') as boolean}
+              className="w-16 bg-neutral-800 text-xs text-neutral-200 text-center rounded-md py-1 outline-none border border-neutral-700 focus:border-neutral-500 disabled:opacity-40"
+            />
+          </SettingsCheck>
+
+          <SettingsDropdown
+            label="Initial Latent"
+            value={v('initialLatent') as string}
+            onChange={(val) => update('initialLatent', val)}
+            options={[{ value: 'none', label: 'None' }, { value: 'image', label: 'Image' }]}
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <SettingsSlider label="Guidance Scale" value={v('guidanceScale') as number} min={1} max={20} step={0.5} onChange={(val) => update('guidanceScale', val)} />
+            <SettingsSlider label="CFG" value={v('cfg') as number} min={0} max={30} step={0.5} onChange={(val) => update('cfg', val)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <SettingsSlider label="Low-res Denoise" value={v('lowResDenoise') as number} min={0} max={1} step={0.01} onChange={(val) => update('lowResDenoise', val)} />
+            <SettingsSlider label="High-res Denoise" value={v('highResDenoise') as number} min={0} max={1} step={0.01} onChange={(val) => update('highResDenoise', val)} />
+          </div>
+
+          <SettingsSlider label="HR Downscale" value={v('hrDownscale') as number} min={0.1} max={1} step={0.05} onChange={(val) => update('hrDownscale', val)} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <SettingsCheck label="Enable HR Fix" checked={v('enableHRFix') as boolean} onChange={(val) => update('enableHRFix', val)} />
+            <SettingsCheck label="Safety Checker" checked={v('enableSafetyChecker') as boolean} onChange={(val) => update('enableSafetyChecker', val)} />
           </div>
         </div>
       )}
 
-      {/* Error message */}
       {error && (
         <div className="px-4 pb-2">
           <p className="text-[11px] text-red-400">{error}</p>
         </div>
       )}
 
-      {/* Run Model button */}
       <div className="px-4 pb-4">
         <button
           onClick={handleRunModel}
@@ -291,7 +320,6 @@ function ImageGenNode({ id, data }: NodeProps) {
         </button>
       </div>
 
-      {/* Input handles */}
       <Handle
         type="target"
         position={Position.Left}
@@ -308,11 +336,9 @@ function ImageGenNode({ id, data }: NodeProps) {
         style={{ top: '55%' }}
         title="Negative Prompt"
       />
-
       <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(35% - 6px)' }}>Prompt</div>
       <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(55% - 6px)' }}>Negative</div>
 
-      {/* Output handle */}
       <Handle
         type="source"
         position={Position.Right}
@@ -325,4 +351,4 @@ function ImageGenNode({ id, data }: NodeProps) {
   )
 }
 
-export default memo(ImageGenNode)
+export default memo(RelightNode)

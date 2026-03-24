@@ -10,6 +10,8 @@ Rails.application.routes.draw do
   end
 
   post "generate/image", to: "generate#image"
+  post "generate/remove_bg", to: "generate#remove_bg"
+  post "generate/trellis", to: "generate#trellis"
   get "node_images/:id", to: "node_images#show"
   get "nodes/:node_id/images", to: "node_images#index"
 

@@ -10,6 +10,14 @@ body {
   min-height: 100vh;
 }
 
+/* In select mode: default cursor unless actively panning (space+drag) */
+.cursor-select-mode .react-flow__pane.draggable {
+  cursor: default;
+}
+.cursor-select-mode .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
 /* Lasso drag rectangle — subtle dashed outline */
 .react-flow__selection {
   background: rgba(59, 130, 246, 0.05) !important;
