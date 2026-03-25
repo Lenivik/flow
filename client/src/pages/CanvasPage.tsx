@@ -749,6 +749,15 @@ function CanvasInner() {
     [dropMenu, setNodes, setEdges, handleNodeDataChange, handleRunModel, handleRunFlux2Flash, handleRunBgRemoval, handleRunTrellis, debugSettings],
   )
 
+  const isValidConnection = useCallback(
+    (connection: Connection | Edge) => {
+      const sourceGroup = handleColorGroup[connection.sourceHandle || ''] || 'purple'
+      const targetGroup = handleColorGroup[connection.targetHandle || ''] || 'purple'
+      return sourceGroup === targetGroup
+    },
+    [],
+  )
+
   const onConnect = useCallback(
     (params: Connection) => {
       const color = handleColors[params.sourceHandle || ''] || '#a78bfa'
@@ -921,6 +930,7 @@ function CanvasInner() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         connectionLineStyle={{ stroke: connectionLineColor, strokeWidth: 2 }}
