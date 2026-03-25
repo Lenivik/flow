@@ -14,6 +14,7 @@ import {
   BackgroundVariant,
   ReactFlowProvider,
   useReactFlow,
+  useViewport,
   SelectionMode,
 } from '@xyflow/react'
 import { Workflow, Plus, Minus, Maximize, Share2, ChevronDown, X, Loader2, Play, ArrowLeft, Settings, ChevronRight } from 'lucide-react'
@@ -217,6 +218,7 @@ function CanvasInner() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { screenToFlowPosition, flowToScreenPosition, getZoom, zoomIn, zoomOut, fitView } = useReactFlow()
+  const viewport = useViewport()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [toolMode, setToolMode] = useState<ToolMode>('select')
@@ -938,13 +940,109 @@ function CanvasInner() {
         selectionOnDrag={toolMode === 'select'}
         selectionMode={SelectionMode.Partial}
         deleteKeyCode={['Backspace', 'Delete']}
-        panOnScroll={false}
-        zoomOnScroll
+        panOnScroll
+        zoomOnScroll={false}
+        zoomOnPinch
         fitView
         className={`bg-neutral-950 ${toolMode === 'select' ? 'cursor-select-mode' : ''}`}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#333" />
+
+        {/* Attached under-node settings — rendered inside ReactFlow so it pans/zooms with the canvas */}
+        {settingsMode === 'attached' && selectedNode && showSubNav && (() => {
+          const sd = selectedNode.data as Record<string, unknown>
+          const up = (key: string, value: unknown) => updateSelectedNodeData(key, String(value))
+          const nodeWidth = selectedNode.measured?.width ?? 352
+          const nodeHeight = selectedNode.measured?.height ?? 300
+          const flowX = selectedNode.position.x + nodeWidth / 2
+          const flowY = selectedNode.position.y + nodeHeight
+          const screenX = flowX * viewport.zoom + viewport.x
+          const screenY = flowY * viewport.zoom + viewport.y
+
+          return (
+            <div
+              className="absolute z-[5] pointer-events-auto"
+              style={{
+                left: screenX,
+                top: screenY + 8 * viewport.zoom,
+                transform: `translateX(-50%) scale(${viewport.zoom})`,
+                transformOrigin: 'top center',
+              }}
+            >
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl p-3 space-y-2">
+                {selectedNode.type === 'imageGen' && (
+                  <div className="flex items-center gap-2">
+                    <SubNavField label="Resolution">
+                      <SubNavSelect value={(sd.resolution as string) || '1K'} onChange={(val) => up('resolution', val)}
+                        options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]} />
+                    </SubNavField>
+                    <SubNavField label="Aspect">
+                      <SubNavSelect value={(sd.aspectRatio as string) || 'auto'} onChange={(val) => up('aspectRatio', val)}
+                        options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16']]} />
+                    </SubNavField>
+                    <SubNavField label="Format">
+                      <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                        options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                    </SubNavField>
+                  </div>
+                )}
+                {selectedNode.type === 'flux2Flash' && (
+                  <div className="flex items-center gap-2">
+                    <SubNavField label="Size">
+                      <SubNavSelect value={(sd.imageSize as string) || 'landscape_4_3'} onChange={(val) => up('imageSize', val)}
+                        options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
+                    </SubNavField>
+                    <SubNavField label="Guidance">
+                      <SubNavSlider value={(sd.guidanceScale as number) ?? 2.5} onChange={(val) => up('guidanceScale', val)} min={0} max={20} step={0.5} />
+                    </SubNavField>
+                    <SubNavField label="Format">
+                      <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                        options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                    </SubNavField>
+                    <SubNavField label="Expand">
+                      <SubNavCheck checked={(sd.enablePromptExpansion as boolean) ?? false} onChange={(val) => up('enablePromptExpansion', String(val))} />
+                    </SubNavField>
+                  </div>
+                )}
+                {selectedNode.type === 'relight' && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <SubNavField label="Size">
+                        <SubNavSelect value={(sd.imageSize as string) || 'square_hd'} onChange={(val) => up('imageSize', val)}
+                          options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
+                      </SubNavField>
+                      <SubNavField label="Steps">
+                        <SubNavSlider value={(sd.inferenceSteps as number) ?? 28} onChange={(val) => up('inferenceSteps', String(val))} min={1} max={100} step={1} />
+                      </SubNavField>
+                      <SubNavField label="Guidance">
+                        <SubNavSlider value={(sd.guidanceScale as number) ?? 5} onChange={(val) => up('guidanceScale', String(val))} min={1} max={20} step={0.5} />
+                      </SubNavField>
+                      <SubNavField label="CFG">
+                        <SubNavSlider value={(sd.cfg as number) ?? 1} onChange={(val) => up('cfg', String(val))} min={0} max={30} step={0.5} />
+                      </SubNavField>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <SubNavField label="Lo Denoise">
+                        <SubNavSlider value={(sd.lowResDenoise as number) ?? 0.98} onChange={(val) => up('lowResDenoise', String(val))} min={0} max={1} step={0.01} />
+                      </SubNavField>
+                      <SubNavField label="Hi Denoise">
+                        <SubNavSlider value={(sd.highResDenoise as number) ?? 0.95} onChange={(val) => up('highResDenoise', String(val))} min={0} max={1} step={0.01} />
+                      </SubNavField>
+                      <SubNavField label="HR Down">
+                        <SubNavSlider value={(sd.hrDownscale as number) ?? 0.5} onChange={(val) => up('hrDownscale', String(val))} min={0.1} max={1} step={0.05} />
+                      </SubNavField>
+                      <SubNavField label="Format">
+                        <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                          options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                      </SubNavField>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })()}
       </ReactFlow>
 
       {/* Top-right controls */}
@@ -1330,105 +1428,6 @@ function CanvasInner() {
         )
       })()}
 
-      {/* Attached under-node settings */}
-      {settingsMode === 'attached' && selectedNode && showSubNav && (() => {
-        const sd = selectedNode.data as Record<string, unknown>
-        const defaults: Record<string, unknown> = {
-          imageSize: 'landscape_4_3', guidanceScale: 2.5, enablePromptExpansion: false,
-          enableSafetyChecker: true, inferenceSteps: 28, randomSeed: true, seed: 42,
-          initialLatent: 'none', enableHRFix: true, cfg: 1, lowResDenoise: 0.98,
-          highResDenoise: 0.95, hrDownscale: 0.5,
-          outputFormat: 'png', resolution: '1K', aspectRatio: 'auto', safetyTolerance: '4',
-        }
-        const v = (key: string) => sd[key] !== undefined ? sd[key] : defaults[key]
-        const up = (key: string, value: unknown) => updateSelectedNodeData(key, String(value))
-
-        // Convert node flow position to screen position
-        const nodeWidth = selectedNode.measured?.width ?? 352
-        const nodeHeight = selectedNode.measured?.height ?? 300
-        const screenPos = flowToScreenPosition({
-          x: selectedNode.position.x + nodeWidth / 2,
-          y: selectedNode.position.y + nodeHeight,
-        })
-
-        return (
-          <div
-            className="fixed z-50 -translate-x-1/2"
-            style={{ left: screenPos.x, top: screenPos.y + 8 }}
-          >
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl p-3 space-y-2">
-              {selectedNode.type === 'imageGen' && (
-                <div className="flex items-center gap-2">
-                  <SubNavField label="Resolution">
-                    <SubNavSelect value={(sd.resolution as string) || '1K'} onChange={(val) => up('resolution', val)}
-                      options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]} />
-                  </SubNavField>
-                  <SubNavField label="Aspect">
-                    <SubNavSelect value={(sd.aspectRatio as string) || 'auto'} onChange={(val) => up('aspectRatio', val)}
-                      options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16']]} />
-                  </SubNavField>
-                  <SubNavField label="Format">
-                    <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
-                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
-                  </SubNavField>
-                </div>
-              )}
-              {selectedNode.type === 'flux2Flash' && (
-                <div className="flex items-center gap-2">
-                  <SubNavField label="Size">
-                    <SubNavSelect value={(sd.imageSize as string) || 'landscape_4_3'} onChange={(val) => up('imageSize', val)}
-                      options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
-                  </SubNavField>
-                  <SubNavField label="Guidance">
-                    <SubNavSlider value={(sd.guidanceScale as number) ?? 2.5} onChange={(val) => up('guidanceScale', val)} min={0} max={20} step={0.5} />
-                  </SubNavField>
-                  <SubNavField label="Format">
-                    <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
-                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
-                  </SubNavField>
-                  <SubNavField label="Expand">
-                    <SubNavCheck checked={(sd.enablePromptExpansion as boolean) ?? false} onChange={(val) => up('enablePromptExpansion', String(val))} />
-                  </SubNavField>
-                </div>
-              )}
-              {selectedNode.type === 'relight' && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <SubNavField label="Size">
-                      <SubNavSelect value={(sd.imageSize as string) || 'square_hd'} onChange={(val) => up('imageSize', val)}
-                        options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
-                    </SubNavField>
-                    <SubNavField label="Steps">
-                      <SubNavSlider value={(sd.inferenceSteps as number) ?? 28} onChange={(val) => up('inferenceSteps', String(val))} min={1} max={100} step={1} />
-                    </SubNavField>
-                    <SubNavField label="Guidance">
-                      <SubNavSlider value={(sd.guidanceScale as number) ?? 5} onChange={(val) => up('guidanceScale', String(val))} min={1} max={20} step={0.5} />
-                    </SubNavField>
-                    <SubNavField label="CFG">
-                      <SubNavSlider value={(sd.cfg as number) ?? 1} onChange={(val) => up('cfg', String(val))} min={0} max={30} step={0.5} />
-                    </SubNavField>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <SubNavField label="Lo Denoise">
-                      <SubNavSlider value={(sd.lowResDenoise as number) ?? 0.98} onChange={(val) => up('lowResDenoise', String(val))} min={0} max={1} step={0.01} />
-                    </SubNavField>
-                    <SubNavField label="Hi Denoise">
-                      <SubNavSlider value={(sd.highResDenoise as number) ?? 0.95} onChange={(val) => up('highResDenoise', String(val))} min={0} max={1} step={0.01} />
-                    </SubNavField>
-                    <SubNavField label="HR Down">
-                      <SubNavSlider value={(sd.hrDownscale as number) ?? 0.5} onChange={(val) => up('hrDownscale', String(val))} min={0.1} max={1} step={0.05} />
-                    </SubNavField>
-                    <SubNavField label="Format">
-                      <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
-                        options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
-                    </SubNavField>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )
-      })()}
     </div>
   )
 }
