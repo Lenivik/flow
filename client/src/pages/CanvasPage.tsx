@@ -16,7 +16,7 @@ import {
   useReactFlow,
   SelectionMode,
 } from '@xyflow/react'
-import { Workflow, Plus, Minus, Maximize, Share2, ChevronDown, Bug, PanelRight, X, Loader2, Play } from 'lucide-react'
+import { Workflow, Plus, Minus, Maximize, Share2, ChevronDown, X, Loader2, Play, ArrowLeft, Settings, ChevronRight } from 'lucide-react'
 import { api } from '../lib/api'
 import { OperationQueue } from '../lib/operationQueue'
 import ConnectionDropMenu from '../components/ConnectionDropMenu'
@@ -138,6 +138,27 @@ function SubNavNumber({ value, onChange, min, max, step }: { value: number; onCh
   )
 }
 
+function SubNavSlider({ value, onChange, min, max, step }: { value: number; onChange: (v: number) => void; min: number; max: number; step: number }) {
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-16 h-1 accent-neutral-400 bg-neutral-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-neutral-200"
+      />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) onChange(Math.min(max, Math.max(min, n))) }}
+        className="w-14 bg-neutral-800 text-[12px] text-neutral-200 text-center rounded-lg py-1 outline-none hover:bg-neutral-700 transition-colors"
+      />
+    </div>
+  )
+}
+
 function SubNavCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -195,7 +216,7 @@ const defaultEdgeOptions = {
 function CanvasInner() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow()
+  const { screenToFlowPosition, flowToScreenPosition, getZoom, zoomIn, zoomOut, fitView } = useReactFlow()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [toolMode, setToolMode] = useState<ToolMode>('select')
@@ -204,7 +225,15 @@ function CanvasInner() {
   const [draftName, setDraftName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
   const [spaceHeld, setSpaceHeld] = useState(false)
-  const [settingsMode, setSettingsMode] = useState<'off' | 'inline' | 'sidebar' | 'narrow'>('off')
+  const [settingsMode, setSettingsMode] = useState<'off' | 'inline' | 'sidebar' | 'narrow' | 'attached'>(() => {
+    const saved = localStorage.getItem('flow_settings_mode')
+    if (saved && ['off', 'inline', 'sidebar', 'narrow', 'attached'].includes(saved)) return saved as 'off' | 'inline' | 'sidebar' | 'narrow' | 'attached'
+    return 'off'
+  })
+  const [logoMenuOpen, setLogoMenuOpen] = useState(false)
+  const [settingsSubOpen, setSettingsSubOpen] = useState(false)
+  const [subNavSubOpen, setSubNavSubOpen] = useState(false)
+  const logoMenuRef = useRef<HTMLDivElement>(null)
   const [runningSelected, setRunningSelected] = useState(false)
   const prevToolMode = useRef<ToolMode>('select')
   const [connectionLineColor, setConnectionLineColor] = useState('#a78bfa')
@@ -338,6 +367,24 @@ function CanvasInner() {
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  // Persist settings mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('flow_settings_mode', settingsMode)
+  }, [settingsMode])
+
+  // Close logo menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (logoMenuRef.current && !logoMenuRef.current.contains(e.target as Node)) {
+        setLogoMenuOpen(false)
+        setSettingsSubOpen(false)
+        setSubNavSubOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   // Sync debug settings flag into all nodes
@@ -770,13 +817,71 @@ function CanvasInner() {
     <div className="h-screen w-screen bg-neutral-950 relative">
       {/* Logo pill */}
       <div className="absolute top-4 left-4 z-40 flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-1.5 py-1.5 shadow-2xl">
-        <button
-          onClick={() => navigate('/projects')}
-          className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors"
-          title="Back to projects"
-        >
-          <Workflow size={18} />
-        </button>
+        <div className="relative" ref={logoMenuRef}>
+          <button
+            onClick={() => { setLogoMenuOpen(!logoMenuOpen); if (logoMenuOpen) { setSettingsSubOpen(false); setSubNavSubOpen(false) } }}
+            className={`p-2 rounded-xl transition-colors ${logoMenuOpen ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+            title="Menu"
+          >
+            <Workflow size={18} />
+          </button>
+          {logoMenuOpen && (
+            <div className="absolute top-full mt-2 left-0 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl py-1.5 min-w-[200px] z-50">
+              <button
+                onClick={() => { setLogoMenuOpen(false); navigate('/projects') }}
+                className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <ArrowLeft size={14} />
+                Back to projects
+              </button>
+              <div className="h-px bg-neutral-700 my-1" />
+              <div className="relative">
+                <button
+                  onClick={() => { setSettingsSubOpen(!settingsSubOpen); setSubNavSubOpen(false) }}
+                  className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2"><Settings size={14} /> Settings</span>
+                  <ChevronRight size={12} />
+                </button>
+                {settingsSubOpen && (
+                  <div className="absolute left-full top-0 ml-1 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl py-1.5 min-w-[200px] z-50">
+                    <div className="relative">
+                      <button
+                        onClick={() => setSubNavSubOpen(!subNavSubOpen)}
+                        className="w-full text-left px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors flex items-center justify-between"
+                      >
+                        Sub nav layout
+                        <ChevronRight size={12} />
+                      </button>
+                      {subNavSubOpen && (
+                        <div className="absolute left-full top-0 ml-1 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl py-1.5 min-w-[180px] z-50">
+                          {([
+                            ['off', 'Off'],
+                            ['inline', 'Inline'],
+                            ['attached', 'Attached'],
+                            ['sidebar', 'Sidebar'],
+                            ['narrow', 'Narrow sidebar'],
+                          ] as const).map(([value, label]) => (
+                            <button
+                              key={value}
+                              onClick={() => { setSettingsMode(value); setLogoMenuOpen(false); setSettingsSubOpen(false); setSubNavSubOpen(false) }}
+                              className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between ${
+                                settingsMode === value ? 'text-white bg-neutral-700' : 'text-neutral-300 hover:bg-neutral-700 hover:text-white'
+                              }`}
+                            >
+                              {label}
+                              {settingsMode === value && <span className="text-blue-400 text-xs">●</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="h-5 w-px bg-neutral-800" />
         {editingName ? (
           <input
@@ -844,14 +949,6 @@ function CanvasInner() {
           <Maximize size={18} />
         </button>
         <div className="h-5 w-px bg-neutral-800" />
-        <button
-          onClick={() => setSettingsMode((m) => m === 'off' ? 'inline' : m === 'inline' ? 'sidebar' : m === 'sidebar' ? 'narrow' : 'off')}
-          className={`p-2 rounded-xl transition-colors ${settingsMode !== 'off' ? 'bg-amber-600/20 text-amber-400' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-          title={`Settings: ${settingsMode} (click to cycle)`}
-        >
-          {settingsMode === 'sidebar' || settingsMode === 'narrow' ? <PanelRight size={18} /> : <Bug size={18} />}
-        </button>
-        <div className="h-5 w-px bg-neutral-800" />
         <button className="px-3 py-1.5 text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors flex items-center gap-1.5" title="Share">
           <Share2 size={14} />
           Share
@@ -859,7 +956,7 @@ function CanvasInner() {
       </div>
 
       {/* Sub-nav for selected node settings */}
-      {showSubNav && settingsMode !== 'sidebar' && settingsMode !== 'narrow' && selectedNode && (() => {
+      {showSubNav && settingsMode !== 'sidebar' && settingsMode !== 'narrow' && settingsMode !== 'attached' && selectedNode && (() => {
         const sd = selectedNode.data as Record<string, unknown>
         return (
           <div className="absolute bottom-[5.5rem] left-1/2 -translate-x-1/2 z-40">
@@ -1218,6 +1315,106 @@ function CanvasInner() {
                 {runningSelected ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                 {runningSelected ? 'Running...' : 'Run Selected'}
               </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Attached under-node settings */}
+      {settingsMode === 'attached' && selectedNode && showSubNav && (() => {
+        const sd = selectedNode.data as Record<string, unknown>
+        const defaults: Record<string, unknown> = {
+          imageSize: 'landscape_4_3', guidanceScale: 2.5, enablePromptExpansion: false,
+          enableSafetyChecker: true, inferenceSteps: 28, randomSeed: true, seed: 42,
+          initialLatent: 'none', enableHRFix: true, cfg: 1, lowResDenoise: 0.98,
+          highResDenoise: 0.95, hrDownscale: 0.5,
+          outputFormat: 'png', resolution: '1K', aspectRatio: 'auto', safetyTolerance: '4',
+        }
+        const v = (key: string) => sd[key] !== undefined ? sd[key] : defaults[key]
+        const up = (key: string, value: unknown) => updateSelectedNodeData(key, String(value))
+
+        // Convert node flow position to screen position
+        const nodeWidth = selectedNode.measured?.width ?? 352
+        const nodeHeight = selectedNode.measured?.height ?? 300
+        const screenPos = flowToScreenPosition({
+          x: selectedNode.position.x + nodeWidth / 2,
+          y: selectedNode.position.y + nodeHeight,
+        })
+
+        return (
+          <div
+            className="fixed z-50 -translate-x-1/2"
+            style={{ left: screenPos.x, top: screenPos.y + 8 }}
+          >
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl p-3 space-y-2">
+              {selectedNode.type === 'imageGen' && (
+                <div className="flex items-center gap-2">
+                  <SubNavField label="Resolution">
+                    <SubNavSelect value={(sd.resolution as string) || '1K'} onChange={(val) => up('resolution', val)}
+                      options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]} />
+                  </SubNavField>
+                  <SubNavField label="Aspect">
+                    <SubNavSelect value={(sd.aspectRatio as string) || 'auto'} onChange={(val) => up('aspectRatio', val)}
+                      options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16']]} />
+                  </SubNavField>
+                  <SubNavField label="Format">
+                    <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  </SubNavField>
+                </div>
+              )}
+              {selectedNode.type === 'flux2Flash' && (
+                <div className="flex items-center gap-2">
+                  <SubNavField label="Size">
+                    <SubNavSelect value={(sd.imageSize as string) || 'landscape_4_3'} onChange={(val) => up('imageSize', val)}
+                      options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
+                  </SubNavField>
+                  <SubNavField label="Guidance">
+                    <SubNavSlider value={(sd.guidanceScale as number) ?? 2.5} onChange={(val) => up('guidanceScale', val)} min={0} max={20} step={0.5} />
+                  </SubNavField>
+                  <SubNavField label="Format">
+                    <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  </SubNavField>
+                  <SubNavField label="Expand">
+                    <SubNavCheck checked={(sd.enablePromptExpansion as boolean) ?? false} onChange={(val) => up('enablePromptExpansion', String(val))} />
+                  </SubNavField>
+                </div>
+              )}
+              {selectedNode.type === 'relight' && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <SubNavField label="Size">
+                      <SubNavSelect value={(sd.imageSize as string) || 'square_hd'} onChange={(val) => up('imageSize', val)}
+                        options={[['square','Sq'],['square_hd','Sq HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]} />
+                    </SubNavField>
+                    <SubNavField label="Steps">
+                      <SubNavSlider value={(sd.inferenceSteps as number) ?? 28} onChange={(val) => up('inferenceSteps', String(val))} min={1} max={100} step={1} />
+                    </SubNavField>
+                    <SubNavField label="Guidance">
+                      <SubNavSlider value={(sd.guidanceScale as number) ?? 5} onChange={(val) => up('guidanceScale', String(val))} min={1} max={20} step={0.5} />
+                    </SubNavField>
+                    <SubNavField label="CFG">
+                      <SubNavSlider value={(sd.cfg as number) ?? 1} onChange={(val) => up('cfg', String(val))} min={0} max={30} step={0.5} />
+                    </SubNavField>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <SubNavField label="Lo Denoise">
+                      <SubNavSlider value={(sd.lowResDenoise as number) ?? 0.98} onChange={(val) => up('lowResDenoise', String(val))} min={0} max={1} step={0.01} />
+                    </SubNavField>
+                    <SubNavField label="Hi Denoise">
+                      <SubNavSlider value={(sd.highResDenoise as number) ?? 0.95} onChange={(val) => up('highResDenoise', String(val))} min={0} max={1} step={0.01} />
+                    </SubNavField>
+                    <SubNavField label="HR Down">
+                      <SubNavSlider value={(sd.hrDownscale as number) ?? 0.5} onChange={(val) => up('hrDownscale', String(val))} min={0.1} max={1} step={0.05} />
+                    </SubNavField>
+                    <SubNavField label="Format">
+                      <SubNavSelect value={(sd.outputFormat as string) || 'png'} onChange={(val) => up('outputFormat', val)}
+                        options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                    </SubNavField>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )
