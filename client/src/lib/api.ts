@@ -55,9 +55,18 @@ export const api = {
 
   beaconOperations: (projectId: string, operations: unknown[]) => {
     const token = localStorage.getItem('token')
-    const blob = new Blob([JSON.stringify({ operations, token })], { type: 'application/json' })
-    navigator.sendBeacon(`${BASE}/projects/${projectId}/canvas/operations`, blob)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    fetch(`${BASE}/projects/${projectId}/canvas/operations`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ operations }),
+      keepalive: true,
+    })
   },
+
+  generateFlux2Flash: (prompt: string, nodeId?: string, settings?: Record<string, string>) =>
+    request('/generate/flux2_flash', { method: 'POST', body: JSON.stringify({ prompt, node_id: nodeId, ...settings }) }),
 
   removeBg: (sourceImageId: number, nodeId?: string) =>
     request('/generate/remove_bg', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId }) }),
@@ -67,8 +76,15 @@ export const api = {
 
   getNodeImages: (nodeId: string) => request(`/nodes/${nodeId}/images`),
 
-  nodeImageUrl: (imageId: number) => {
+  nodeImageUrl: (imageId: number) => `${BASE}/node_images/${imageId}`,
+
+  fetchNodeImageBlob: async (imageId: number): Promise<string> => {
     const token = localStorage.getItem('token')
-    return `${BASE}/node_images/${imageId}?token=${token}`
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${BASE}/node_images/${imageId}`, { headers })
+    if (!res.ok) throw new Error('Failed to fetch image')
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
   },
 }

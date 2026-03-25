@@ -15,7 +15,13 @@
       "Bash(bin/rails routes:*)",
       "Bash(bin/rails runner:*)",
       "Bash(ls:*)",
-      "Bash(EDITOR=\"cat\" bin/rails credentials:edit 2>&1)"
+      "Bash(EDITOR=\"cat\" bin/rails credentials:edit 2>&1)",
+      "Bash(npm list:*)",
+      "Bash(grep -r \"bgRemoval\\\\|remove_bg\\\\|BgRemoval\" /Users/patrickrutkowski/Developer/ruby/flow --include=*.rb --include=*.tsx --include=*.ts -l)",
+      "Bash(ruby -c app/controllers/generate_controller.rb)",
+      "Bash(ruby -c app/controllers/canvas_controller.rb)",
+      "Bash(ruby -c app/controllers/concerns/authentication.rb)",
+      "Bash(ruby -c app/controllers/projects_controller.rb)"
     ]
   }
 }

@@ -51,7 +51,7 @@ class ProjectsController < ApplicationController
       id: project.id,
       name: project.name,
       nodes: project.nodes.includes(:node_images).map { |n|
-        latest_image = n.node_images.order(created_at: :desc).first
+        latest_image = n.node_images.max_by(&:created_at)
         node_data = n.data || {}
         node_data = node_data.merge("activeImageId" => latest_image.id) if latest_image
         { id: n.id.to_s, type: n.node_type, position: { x: n.position_x, y: n.position_y }, data: node_data }

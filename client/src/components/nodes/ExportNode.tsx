@@ -1,14 +1,15 @@
 import { memo, useState } from 'react'
 import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
-import { Download, Loader2, Lock } from 'lucide-react'
-import NodeContextMenu from './NodeContextMenu'
+import { Download, Loader2 } from 'lucide-react'
+import NodeHeader from './NodeHeader'
+import { useNodeActions } from '../../hooks/useNodeActions'
 
 function ExportNode({ id, data }: NodeProps) {
   const inputConnections = useNodeConnections({ handleType: 'target', handleId: 'input' })
-  const [menuOpen, setMenuOpen] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const { setNodes, setEdges, getNode } = useReactFlow()
+  const { getNode } = useReactFlow()
   const locked = !!data.locked
+  const { menuOpen, setMenuOpen, handleDuplicate, handleLock, handleDelete } = useNodeActions(id, locked)
 
   const getImageUrl = () => {
     if (inputConnections.length === 0) return undefined
@@ -19,7 +20,6 @@ function ExportNode({ id, data }: NodeProps) {
   const imageUrl = getImageUrl()
 
   const handleDownload = async () => {
-    // Re-read at download time to always get the latest image
     const currentUrl = getImageUrl()
     if (!currentUrl) return
     setDownloading(true)
@@ -40,62 +40,18 @@ function ExportNode({ id, data }: NodeProps) {
     }
   }
 
-  const handleDuplicate = () => {
-    const node = getNode(id)
-    if (!node) return
-    const newNode = {
-      ...node,
-      id: `temp_${Date.now()}`,
-      position: { x: node.position.x + 50, y: node.position.y + 50 },
-      selected: false,
-      data: { ...node.data, locked: false },
-      draggable: true,
-    }
-    setNodes((nds) => [...nds, newNode])
-    setMenuOpen(false)
-  }
-
-  const handleLock = () => {
-    setNodes((nds) =>
-      nds.map((n) => n.id === id ? { ...n, draggable: locked, data: { ...n.data, locked: !locked } } : n),
-    )
-    setMenuOpen(false)
-  }
-
-  const handleDelete = () => {
-    if (locked) return
-    setNodes((nds) => nds.filter((n) => n.id !== id))
-    setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
-    setMenuOpen(false)
-  }
-
   return (
     <div className={`bg-neutral-900 rounded-xl shadow-2xl min-w-[240px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50">
-        <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
-          {locked && <Lock size={12} className="text-neutral-500" />}
-          Export
-        </span>
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!menuOpen)} className="text-neutral-500 hover:text-neutral-300 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="3" cy="8" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="13" cy="8" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <NodeContextMenu
-              locked={locked}
-              onDuplicate={handleDuplicate}
-              onRename={() => setMenuOpen(false)}
-              onLock={handleLock}
-              onDelete={handleDelete}
-              onClose={() => setMenuOpen(false)}
-            />
-          )}
-        </div>
-      </div>
+      <NodeHeader
+        title="Export"
+        locked={locked}
+        menuOpen={menuOpen}
+        onMenuToggle={() => setMenuOpen(!menuOpen)}
+        onDuplicate={handleDuplicate}
+        onLock={handleLock}
+        onDelete={handleDelete}
+        onCloseMenu={() => setMenuOpen(false)}
+      />
 
       <div className="p-4">
         <button
@@ -120,7 +76,6 @@ function ExportNode({ id, data }: NodeProps) {
         )}
       </div>
 
-      {/* Input handle */}
       <Handle
         type="target"
         position={Position.Left}

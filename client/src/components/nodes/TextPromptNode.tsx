@@ -1,13 +1,12 @@
-import { memo, useCallback, useState } from 'react'
-import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
-import { Lock } from 'lucide-react'
-import NodeContextMenu from './NodeContextMenu'
+import { memo, useCallback } from 'react'
+import { Handle, Position, useNodeConnections, type NodeProps } from '@xyflow/react'
+import NodeHeader from './NodeHeader'
+import { useNodeActions } from '../../hooks/useNodeActions'
 
 function TextPromptNode({ id, data }: NodeProps) {
   const promptConnections = useNodeConnections({ handleType: 'source', handleId: 'prompt' })
-  const [menuOpen, setMenuOpen] = useState(false)
-  const { setNodes, setEdges, getNode } = useReactFlow()
   const locked = !!data.locked
+  const { menuOpen, setMenuOpen, handleDuplicate, handleLock, handleDelete } = useNodeActions(id, locked)
 
   const onChange = useCallback(
     (evt: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -18,62 +17,18 @@ function TextPromptNode({ id, data }: NodeProps) {
     [id, data],
   )
 
-  const handleDuplicate = () => {
-    const node = getNode(id)
-    if (!node) return
-    const newNode = {
-      ...node,
-      id: `temp_${Date.now()}`,
-      position: { x: node.position.x + 50, y: node.position.y + 50 },
-      selected: false,
-      data: { ...node.data, locked: false },
-      draggable: true,
-    }
-    setNodes((nds) => [...nds, newNode])
-    setMenuOpen(false)
-  }
-
-  const handleLock = () => {
-    setNodes((nds) =>
-      nds.map((n) => n.id === id ? { ...n, draggable: locked, data: { ...n.data, locked: !locked } } : n),
-    )
-    setMenuOpen(false)
-  }
-
-  const handleDelete = () => {
-    if (locked) return
-    setNodes((nds) => nds.filter((n) => n.id !== id))
-    setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id))
-    setMenuOpen(false)
-  }
-
   return (
     <div className={`bg-neutral-900 rounded-xl shadow-2xl min-w-[320px] max-w-[400px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50">
-        <span className="text-sm font-medium text-neutral-300 flex items-center gap-2">
-          {locked && <Lock size={12} className="text-neutral-500" />}
-          Prompt
-        </span>
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!menuOpen)} className="text-neutral-500 hover:text-neutral-300 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="3" cy="8" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="13" cy="8" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <NodeContextMenu
-              locked={locked}
-              onDuplicate={handleDuplicate}
-              onRename={() => setMenuOpen(false)}
-              onLock={handleLock}
-              onDelete={handleDelete}
-              onClose={() => setMenuOpen(false)}
-            />
-          )}
-        </div>
-      </div>
+      <NodeHeader
+        title="Prompt"
+        locked={locked}
+        menuOpen={menuOpen}
+        onMenuToggle={() => setMenuOpen(!menuOpen)}
+        onDuplicate={handleDuplicate}
+        onLock={handleLock}
+        onDelete={handleDelete}
+        onCloseMenu={() => setMenuOpen(false)}
+      />
       <div className="p-4">
         <textarea
           value={(data.prompt as string) || ''}

@@ -25,7 +25,7 @@ module Authentication
     end
 
     def find_session_by_token
-      token = request.headers["Authorization"]&.split(" ")&.last || params[:token]
+      token = request.headers["Authorization"]&.split(" ")&.last
       return nil unless token
 
       begin

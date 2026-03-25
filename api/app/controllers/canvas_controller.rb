@@ -3,20 +3,24 @@ class CanvasController < ApplicationController
 
   def save
     ActiveRecord::Base.transaction do
-      # Must destroy edges first to avoid foreign key violations when deleting nodes
-      @project.edges.destroy_all
       sync_nodes(params[:nodes] || [])
       sync_edges(params[:edges] || [])
     end
 
     render json: { message: "Canvas saved", id_map: @id_map || {} }
+  rescue => e
+    Rails.logger.error("Canvas save failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}")
+    render json: { error: "Canvas save failed" }, status: :internal_server_error
   end
 
   def operations
     @client_to_server = {}
 
+    # Sort operations: creates before updates/deletes, node ops before edge ops
+    sorted_ops = sort_operations(params[:operations] || [])
+
     ActiveRecord::Base.transaction do
-      (params[:operations] || []).each do |op|
+      sorted_ops.each do |op|
         type = op[:type]
         payload = op[:payload]
 
@@ -61,6 +65,9 @@ class CanvasController < ApplicationController
     end
 
     render json: { id_map: @client_to_server }
+  rescue => e
+    Rails.logger.error("Canvas operations failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}")
+    render json: { error: "Canvas operations failed" }, status: :internal_server_error
   end
 
   private
@@ -71,6 +78,19 @@ class CanvasController < ApplicationController
 
   def set_project
     @project = Current.session.user.projects.find(params[:project_id])
+  end
+
+  # Ensure node_creates are processed before edge_creates,
+  # and deletes are processed after updates
+  def sort_operations(ops)
+    priority = {
+      "node_create" => 0,
+      "edge_create" => 1,
+      "node_update" => 2,
+      "edge_delete" => 3,
+      "node_delete" => 4,
+    }
+    ops.sort_by { |op| priority[op[:type]] || 99 }
   end
 
   def sync_nodes(nodes_data)
@@ -109,6 +129,8 @@ class CanvasController < ApplicationController
   end
 
   def sync_edges(edges_data)
+    # Delete existing edges that aren't in the incoming set, then recreate
+    @project.edges.delete_all
     valid_node_ids = @project.nodes.pluck(:id).map(&:to_s)
 
     edges_data.each do |edge_data|

@@ -27,10 +27,12 @@ import ExportNode from '../components/nodes/ExportNode'
 import RelightNode from '../components/nodes/RelightNode'
 import BgRemovalNode from '../components/nodes/BgRemovalNode'
 import TrellisNode from '../components/nodes/TrellisNode'
+import Flux2FlashNode from '../components/nodes/Flux2FlashNode'
 
 const nodeTypes = {
   textPrompt: TextPromptNode,
   imageGen: ImageGenNode,
+  flux2Flash: Flux2FlashNode,
   relight: RelightNode,
   bgRemoval: BgRemovalNode,
   trellis: TrellisNode,
@@ -64,6 +66,12 @@ const nodeCatalog = [
     type: 'imageGen',
     label: 'Image Generation',
     targetHandles: ['prompt', 'negative_prompt'],
+    sourceHandles: ['result'],
+  },
+  {
+    type: 'flux2Flash',
+    label: 'Flux 2 Flash',
+    targetHandles: ['prompt'],
     sourceHandles: ['result'],
   },
   {
@@ -217,34 +225,50 @@ function CanvasInner() {
   // Load canvas data
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     api.getProject(id).then(async (data) => {
+      if (cancelled) return
       setProjectName(data.name)
       if (data.nodes?.length) {
-        const loadedNodes = data.nodes.map((n: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }) => {
-          const nodeData = { ...n.data, onChange: handleNodeDataChange, onRunModel: handleRunModel, onRunBgRemoval: handleRunBgRemoval, onRunTrellis: handleRunTrellis }
+        const loadedNodes = await Promise.all(data.nodes.map(async (n: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }) => {
+          const nodeData = { ...n.data, onChange: handleNodeDataChange, onRunModel: handleRunModel, onRunFlux2Flash: handleRunFlux2Flash, onRunBgRemoval: handleRunBgRemoval, onRunTrellis: handleRunTrellis }
           if (n.data.activeImageId) {
-            const url = api.nodeImageUrl(n.data.activeImageId as number)
-            if (n.type === 'trellis') {
-              nodeData.modelFile = url
-            } else {
-              nodeData.imageUrl = url
-            }
+            try {
+              const url = await api.fetchNodeImageBlob(n.data.activeImageId as number)
+              if (n.type === 'trellis') {
+                nodeData.modelFile = url
+              } else {
+                nodeData.imageUrl = url
+              }
+            } catch { /* image may have been deleted */ }
           }
           return { id: n.id, type: n.type, position: n.position, data: nodeData }
-        })
+        }))
+        if (cancelled) return
         setNodes(loadedNodes)
 
         // Load image history for image generation nodes
         for (const n of loadedNodes) {
-          if ((n.type === 'imageGen' || n.type === 'relight' || n.type === 'bgRemoval' || n.type === 'trellis') && n.id.match(/^\d+$/)) {
-            api.getNodeImages(n.id).then((images: { id: number }[]) => {
-              if (!images?.length) return
-              const history = images.reverse().map((img: { id: number }) => ({ id: img.id, url: api.nodeImageUrl(img.id) }))
+          if ((n.type === 'imageGen' || n.type === 'flux2Flash' || n.type === 'relight' || n.type === 'bgRemoval' || n.type === 'trellis') && n.id.match(/^\d+$/)) {
+            api.getNodeImages(n.id).then(async (images: { id: number }[]) => {
+              if (!images?.length || cancelled) return
+              const history = await Promise.all(
+                images.reverse().map(async (img: { id: number }) => {
+                  try {
+                    const url = await api.fetchNodeImageBlob(img.id)
+                    return { id: img.id, url }
+                  } catch {
+                    return { id: img.id, url: '' }
+                  }
+                })
+              )
+              if (cancelled) return
+              const validHistory = history.filter((h) => h.url)
               const activeId = n.data.activeImageId as number | undefined
-              const activeIdx = activeId ? history.findIndex((h: { id: number }) => h.id === activeId) : history.length - 1
+              const activeIdx = activeId ? validHistory.findIndex((h) => h.id === activeId) : validHistory.length - 1
               setNodes((nds) =>
                 nds.map((node) => node.id === n.id
-                  ? { ...node, data: { ...node.data, imageHistory: history, imageIndex: activeIdx >= 0 ? activeIdx : history.length - 1 } }
+                  ? { ...node, data: { ...node.data, imageHistory: validHistory, imageIndex: activeIdx >= 0 ? activeIdx : validHistory.length - 1 } }
                   : node
                 ),
               )
@@ -259,6 +283,7 @@ function CanvasInner() {
         })))
       }
     })
+    return () => { cancelled = true }
   }, [id])
 
   // Spacebar for hand tool
@@ -359,14 +384,15 @@ function CanvasInner() {
       const settings: Record<string, string> = {}
       if (nodeData?.resolution) settings.resolution = nodeData.resolution as string
       if (nodeData?.aspectRatio) settings.aspect_ratio = nodeData.aspectRatio as string
-      if (nodeData?.imageSize) settings.image_size = nodeData.imageSize as string
       if (nodeData?.outputFormat) settings.output_format = nodeData.outputFormat as string
+      if (nodeData?.seed) settings.seed = nodeData.seed as string
+      if (nodeData?.safetyTolerance) settings.safety_tolerance = nodeData.safetyTolerance as string
       const result = await api.generateImage(prompt, negativePrompt, serverNodeId, settings)
       if (result.error) return result.error
 
-      // Use persisted image URL if we have an image ID, otherwise fall back to inline base64
+      // Fetch the persisted image via authenticated request
       const imageUrl = result.node_image_id
-        ? api.nodeImageUrl(result.node_image_id)
+        ? await api.fetchNodeImageBlob(result.node_image_id)
         : `data:${result.mime_type};base64,${result.image_data}`
 
       const newEntry = { id: result.node_image_id, url: imageUrl }
@@ -406,7 +432,7 @@ function CanvasInner() {
       if (result.error) return result.error
 
       const imageUrl = result.node_image_id
-        ? api.nodeImageUrl(result.node_image_id)
+        ? await api.fetchNodeImageBlob(result.node_image_id)
         : `data:${result.mime_type};base64,${result.image_data}`
 
       const newEntry = { id: result.node_image_id, url: imageUrl }
@@ -445,7 +471,7 @@ function CanvasInner() {
       if (result.error) return result.error
 
       const modelUrl = result.node_image_id
-        ? api.nodeImageUrl(result.node_image_id)
+        ? await api.fetchNodeImageBlob(result.node_image_id)
         : undefined
 
       const newEntry = { id: result.node_image_id, url: modelUrl || '' }
@@ -471,6 +497,53 @@ function CanvasInner() {
       return null
     } catch (err) {
       return err instanceof Error ? err.message : '3D generation failed'
+    }
+  }, [setNodes])
+
+  const handleRunFlux2Flash = useCallback(async (nodeId: string): Promise<string | null> => {
+    const currentNodes = nodesRef.current
+    const currentEdges = edgesRef.current
+
+    const promptEdge = currentEdges.find((e) => e.target === nodeId && e.targetHandle === 'prompt')
+    const promptNode = promptEdge ? currentNodes.find((n) => n.id === promptEdge.source) : null
+    const prompt = (promptNode?.data as Record<string, unknown>)?.prompt as string | undefined
+
+    if (!prompt?.trim()) {
+      return 'No prompt connected. Connect a Text Prompt node to the Prompt input.'
+    }
+
+    try {
+      const serverNodeId = nodeId.match(/^\d+$/) ? nodeId : undefined
+      const genNode = currentNodes.find((n) => n.id === nodeId)
+      const nodeData = genNode?.data as Record<string, unknown> | undefined
+      const settings: Record<string, string> = {}
+      if (nodeData?.imageSize) settings.image_size = nodeData.imageSize as string
+      if (nodeData?.guidanceScale) settings.guidance_scale = nodeData.guidanceScale as string
+      if (nodeData?.outputFormat) settings.output_format = nodeData.outputFormat as string
+      if (nodeData?.seed) settings.seed = nodeData.seed as string
+      if (nodeData?.enablePromptExpansion) settings.enable_prompt_expansion = nodeData.enablePromptExpansion as string
+      if (nodeData?.enableSafetyChecker !== undefined) settings.enable_safety_checker = String(nodeData.enableSafetyChecker)
+      const result = await api.generateFlux2Flash(prompt, serverNodeId, settings)
+      if (result.error) return result.error
+
+      const imageUrl = result.node_image_id
+        ? await api.fetchNodeImageBlob(result.node_image_id)
+        : `data:${result.mime_type};base64,${result.image_data}`
+
+      const newEntry = { id: result.node_image_id, url: imageUrl }
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== nodeId) return n
+          const nd = n.data as Record<string, unknown>
+          const history = [...((nd.imageHistory as { id: number; url: string }[]) || [])]
+          history.push(newEntry)
+          return { ...n, data: { ...nd, imageUrl, activeImageId: result.node_image_id, imageHistory: history, imageIndex: history.length - 1 } }
+        }),
+      )
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Generation failed'
     }
   }, [setNodes])
 
@@ -626,7 +699,7 @@ function CanvasInner() {
 
       setDropMenu(null)
     },
-    [dropMenu, setNodes, setEdges, handleNodeDataChange, handleRunModel],
+    [dropMenu, setNodes, setEdges, handleNodeDataChange, handleRunModel, handleRunFlux2Flash, handleRunBgRemoval, handleRunTrellis, debugSettings],
   )
 
   const onConnect = useCallback(
@@ -664,18 +737,18 @@ function CanvasInner() {
         payload: { client_id: clientId, type, position, data: {} },
       })
     },
-    [screenToFlowPosition, setNodes, handleNodeDataChange, handleRunModel],
+    [screenToFlowPosition, setNodes, handleNodeDataChange, handleRunModel, handleRunFlux2Flash, handleRunBgRemoval, handleRunTrellis, debugSettings],
   )
 
   // Detect single selected node for sub-nav
   const selectedNodes = nodes.filter((n) => n.selected)
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
-  const showSubNav = selectedNode?.type === 'imageGen' || selectedNode?.type === 'relight' || selectedNode?.type === 'bgRemoval' || selectedNode?.type === 'trellis'
+  const showSubNav = selectedNode?.type === 'imageGen' || selectedNode?.type === 'flux2Flash' || selectedNode?.type === 'relight'
 
   const handleRunSelected = () => {
     if (!selectedNode) return
     setRunningSelected(true)
-    const runner = selectedNode.type === 'bgRemoval' ? handleRunBgRemoval : selectedNode.type === 'trellis' ? handleRunTrellis : handleRunModel
+    const runner = selectedNode.type === 'bgRemoval' ? handleRunBgRemoval : selectedNode.type === 'trellis' ? handleRunTrellis : selectedNode.type === 'flux2Flash' ? handleRunFlux2Flash : handleRunModel
     runner(selectedNode.id).finally(() => setRunningSelected(false))
   }
 
@@ -797,15 +870,46 @@ function CanvasInner() {
                     <SubNavSelect
                       value={(sd.resolution as string) || '1K'}
                       onChange={(v) => updateSelectedNodeData('resolution', v)}
-                      options={[['1K','1K'],['2K','2K'],['4K','4K']]}
+                      options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]}
                     />
                   </SubNavField>
                   <SubNavField label="Aspect Ratio">
                     <SubNavSelect
-                      value={(sd.aspectRatio as string) || '1:1'}
+                      value={(sd.aspectRatio as string) || 'auto'}
                       onChange={(v) => updateSelectedNodeData('aspectRatio', v)}
-                      options={[['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3']]}
+                      options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3'],['21:9','21:9'],['5:4','5:4'],['4:5','4:5']]}
                     />
+                  </SubNavField>
+                  <SubNavField label="Format">
+                    <SubNavSelect
+                      value={(sd.outputFormat as string) || 'png'}
+                      onChange={(v) => updateSelectedNodeData('outputFormat', v)}
+                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]}
+                    />
+                  </SubNavField>
+                </>
+              )}
+              {selectedNode.type === 'flux2Flash' && (
+                <>
+                  <SubNavField label="Image Size">
+                    <SubNavSelect
+                      value={(sd.imageSize as string) || 'landscape_4_3'}
+                      onChange={(v) => updateSelectedNodeData('imageSize', v)}
+                      options={[['square','Square'],['square_hd','Square HD'],['portrait_4_3','4:3 P'],['portrait_16_9','16:9 P'],['landscape_4_3','4:3 L'],['landscape_16_9','16:9 L']]}
+                    />
+                  </SubNavField>
+                  <SubNavField label="Guidance">
+                    <SubNavNumber value={(sd.guidanceScale as number) ?? 2.5} onChange={(v) => updateSelectedNodeData('guidanceScale', String(v))} min={0} max={20} step={0.5} />
+                  </SubNavField>
+                  <SubNavField label="Format">
+                    <SubNavSelect
+                      value={(sd.outputFormat as string) || 'png'}
+                      onChange={(v) => updateSelectedNodeData('outputFormat', v)}
+                      options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]}
+                    />
+                  </SubNavField>
+                  <SubNavField label="Expand">
+                    <SubNavCheck checked={(sd.enablePromptExpansion as boolean) ?? false} onChange={(v) => updateSelectedNodeData('enablePromptExpansion', String(v))} />
                   </SubNavField>
                 </>
               )}
@@ -904,11 +1008,12 @@ function CanvasInner() {
       {settingsMode === 'sidebar' && selectedNode && showSubNav && (() => {
         const sd = selectedNode.data as Record<string, unknown>
         const defaults: Record<string, unknown> = {
-          imageSize: 'square_hd', inferenceSteps: 28, randomSeed: true, seed: 42,
+          imageSize: 'landscape_4_3', guidanceScale: 2.5, enablePromptExpansion: false,
+          enableSafetyChecker: true, inferenceSteps: 28, randomSeed: true, seed: 42,
           initialLatent: 'none', enableHRFix: true, cfg: 1, lowResDenoise: 0.98,
           highResDenoise: 0.95, hrDownscale: 0.5, guidanceScale: 5,
           enableSafetyChecker: true, outputFormat: 'png',
-          resolution: '1K', aspectRatio: '1:1',
+          resolution: '1K', aspectRatio: 'auto', safetyTolerance: '4',
         }
         const v = (key: string) => sd[key] !== undefined ? sd[key] : defaults[key]
         const up = (key: string, value: unknown) => updateSelectedNodeData(key, String(value))
@@ -917,7 +1022,7 @@ function CanvasInner() {
           <div className="absolute right-4 w-72 z-40 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col" style={{ top: '5.5rem', bottom: '6.5rem' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
               <span className="text-sm font-medium text-neutral-200">
-                {selectedNode.type === 'imageGen' ? 'Google Nano Banana' : selectedNode.type === 'bgRemoval' ? 'BG Removal' : selectedNode.type === 'trellis' ? 'Trellis' : 'Relight 2.0'}
+                {selectedNode.type === 'imageGen' ? 'Nano Banana 2' : selectedNode.type === 'flux2Flash' ? 'Flux 2 Flash' : selectedNode.type === 'bgRemoval' ? 'BG Removal' : selectedNode.type === 'trellis' ? 'Trellis' : 'Relight 2.0'}
               </span>
               <button onClick={() => setSettingsMode('off')} className="p-1 text-neutral-500 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors">
                 <X size={16} />
@@ -927,9 +1032,34 @@ function CanvasInner() {
               {selectedNode.type === 'imageGen' && (
                 <>
                   <SidebarDropdown label="Resolution" value={v('resolution') as string} onChange={(val) => up('resolution', val)}
-                    options={[['1K','1K'],['2K','2K'],['4K','4K']]} />
+                    options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]} />
                   <SidebarDropdown label="Aspect Ratio" value={v('aspectRatio') as string} onChange={(val) => up('aspectRatio', val)}
-                    options={[['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3']]} />
+                    options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3'],['21:9','21:9'],['5:4','5:4'],['4:5','4:5']]} />
+                  <SidebarDropdown label="Output Format" value={v('outputFormat') as string} onChange={(val) => up('outputFormat', val)}
+                    options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  <SidebarDropdown label="Safety" value={v('safetyTolerance') as string} onChange={(val) => up('safetyTolerance', val)}
+                    options={[['1','1 (Strict)'],['2','2'],['3','3'],['4','4 (Default)'],['5','5'],['6','6 (Relaxed)']]} />
+                </>
+              )}
+              {selectedNode.type === 'flux2Flash' && (
+                <>
+                  <SidebarDropdown label="Image Size" value={v('imageSize') as string} onChange={(val) => up('imageSize', val)}
+                    options={[['square','Square'],['square_hd','Square HD'],['portrait_4_3','Portrait 4:3'],['portrait_16_9','Portrait 16:9'],['landscape_4_3','Landscape 4:3'],['landscape_16_9','Landscape 16:9']]} />
+                  <SidebarSlider label="Guidance Scale" value={v('guidanceScale') as number} min={0} max={20} step={0.5} onChange={(val) => up('guidanceScale', val)} />
+                  <SidebarDropdown label="Output Format" value={v('outputFormat') as string} onChange={(val) => up('outputFormat', val)}
+                    options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={(v('enablePromptExpansion') as boolean) ?? false} onChange={(e) => up('enablePromptExpansion', e.target.checked)} className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-800 accent-purple-500 cursor-pointer" />
+                      <span className="text-[11px] font-medium text-neutral-400">Prompt Expansion</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={(v('enableSafetyChecker') as boolean) ?? true} onChange={(e) => up('enableSafetyChecker', e.target.checked)} className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-800 accent-purple-500 cursor-pointer" />
+                      <span className="text-[11px] font-medium text-neutral-400">Safety Checker</span>
+                    </label>
+                  </div>
                 </>
               )}
               {selectedNode.type === 'relight' && (
@@ -988,11 +1118,11 @@ function CanvasInner() {
       {settingsMode === 'narrow' && selectedNode && showSubNav && (() => {
         const sd = selectedNode.data as Record<string, unknown>
         const defaults: Record<string, unknown> = {
-          imageSize: 'square_hd', inferenceSteps: 28, randomSeed: true, seed: 42,
+          imageSize: 'landscape_4_3', guidanceScale: 2.5, enablePromptExpansion: false,
+          enableSafetyChecker: true, inferenceSteps: 28, randomSeed: true, seed: 42,
           initialLatent: 'none', enableHRFix: true, cfg: 1, lowResDenoise: 0.98,
-          highResDenoise: 0.95, hrDownscale: 0.5, guidanceScale: 5,
-          enableSafetyChecker: true, outputFormat: 'png',
-          resolution: '1K', aspectRatio: '1:1',
+          highResDenoise: 0.95, hrDownscale: 0.5,
+          outputFormat: 'png', resolution: '1K', aspectRatio: 'auto', safetyTolerance: '4',
         }
         const v = (key: string) => sd[key] !== undefined ? sd[key] : defaults[key]
         const up = (key: string, value: unknown) => updateSelectedNodeData(key, String(value))
@@ -1001,7 +1131,7 @@ function CanvasInner() {
           <div className="absolute right-4 w-48 z-40 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col" style={{ top: '5.5rem', bottom: '6.5rem' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
               <span className="text-sm font-medium text-neutral-200 truncate">
-                {selectedNode.type === 'imageGen' ? 'Google Nano Banana' : selectedNode.type === 'bgRemoval' ? 'BG Removal' : selectedNode.type === 'trellis' ? 'Trellis' : 'Relight 2.0'}
+                {selectedNode.type === 'imageGen' ? 'Nano Banana 2' : selectedNode.type === 'flux2Flash' ? 'Flux 2 Flash' : selectedNode.type === 'bgRemoval' ? 'BG Removal' : selectedNode.type === 'trellis' ? 'Trellis' : 'Relight 2.0'}
               </span>
               <button onClick={() => setSettingsMode('off')} className="p-1 text-neutral-500 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors">
                 <X size={16} />
@@ -1011,9 +1141,34 @@ function CanvasInner() {
               {selectedNode.type === 'imageGen' && (
                 <>
                   <SidebarDropdown label="Resolution" value={v('resolution') as string} onChange={(val) => up('resolution', val)}
-                    options={[['1K','1K'],['2K','2K'],['4K','4K']]} />
+                    options={[['0.5K','0.5K'],['1K','1K'],['2K','2K'],['4K','4K']]} />
                   <SidebarDropdown label="Aspect Ratio" value={v('aspectRatio') as string} onChange={(val) => up('aspectRatio', val)}
-                    options={[['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3']]} />
+                    options={[['auto','Auto'],['1:1','1:1'],['4:3','4:3'],['3:4','3:4'],['16:9','16:9'],['9:16','9:16'],['3:2','3:2'],['2:3','2:3'],['21:9','21:9'],['5:4','5:4'],['4:5','4:5']]} />
+                  <SidebarDropdown label="Output Format" value={v('outputFormat') as string} onChange={(val) => up('outputFormat', val)}
+                    options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  <SidebarDropdown label="Safety" value={v('safetyTolerance') as string} onChange={(val) => up('safetyTolerance', val)}
+                    options={[['1','1 (Strict)'],['2','2'],['3','3'],['4','4 (Default)'],['5','5'],['6','6 (Relaxed)']]} />
+                </>
+              )}
+              {selectedNode.type === 'flux2Flash' && (
+                <>
+                  <SidebarDropdown label="Image Size" value={v('imageSize') as string} onChange={(val) => up('imageSize', val)}
+                    options={[['square','Square'],['square_hd','Square HD'],['portrait_4_3','Portrait 4:3'],['portrait_16_9','Portrait 16:9'],['landscape_4_3','Landscape 4:3'],['landscape_16_9','Landscape 16:9']]} />
+                  <SidebarSlider label="Guidance Scale" value={v('guidanceScale') as number} min={0} max={20} step={0.5} onChange={(val) => up('guidanceScale', val)} />
+                  <SidebarDropdown label="Output Format" value={v('outputFormat') as string} onChange={(val) => up('outputFormat', val)}
+                    options={[['png','PNG'],['jpeg','JPEG'],['webp','WebP']]} />
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={(v('enablePromptExpansion') as boolean) ?? false} onChange={(e) => up('enablePromptExpansion', e.target.checked)} className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-800 accent-purple-500 cursor-pointer" />
+                      <span className="text-[11px] font-medium text-neutral-400">Prompt Expansion</span>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={(v('enableSafetyChecker') as boolean) ?? true} onChange={(e) => up('enableSafetyChecker', e.target.checked)} className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-800 accent-purple-500 cursor-pointer" />
+                      <span className="text-[11px] font-medium text-neutral-400">Safety Checker</span>
+                    </label>
+                  </div>
                 </>
               )}
               {selectedNode.type === 'relight' && (

@@ -76,7 +76,8 @@ export default function CanvasToolbar({ toolMode, onToolModeChange, onAddNode }:
       icon: <ImageIcon size={18} />,
       label: 'Image Models',
       submenu: [
-        { label: 'Google Nano Banana', action: () => onAddNode('imageGen') },
+        { label: 'Nano Banana 2', action: () => onAddNode('imageGen') },
+        { label: 'Flux 2 Flash', action: () => onAddNode('flux2Flash') },
         { label: 'Relight 2.0', action: () => onAddNode('relight') },
       ],
     },
