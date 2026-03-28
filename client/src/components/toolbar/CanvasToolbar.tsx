@@ -112,6 +112,7 @@ const MENU_DATA: Category[] = [
         label: 'Edit images',
         models: [
           { label: 'BG Removal', nodeType: 'bgRemoval', description: 'Remove backgrounds from images automatically.' },
+          { label: 'Flux 2 Edit', nodeType: 'flux2Edit', description: 'Edit images with text prompts. Describe changes to apply.' },
           { label: 'Generative Fill', nodeType: null, description: 'AI-powered inpainting and fill.' },
           { label: 'Magic Eraser', nodeType: null, description: 'Remove unwanted objects from images.' },
           { label: 'SDXL Inpaint', nodeType: null, description: 'Stable Diffusion XL inpainting.' },
@@ -380,7 +381,7 @@ export default function CanvasToolbar({ toolMode, onToolModeChange, onAddNode }:
         <div className="relative flex items-center">
           <button
             onClick={() => onToolModeChange(toolMode === 'select' ? 'hand' : 'select')}
-            className="p-2.5 rounded-xl transition-colors bg-blue-600 text-white"
+            className="p-2.5 rounded-xl transition-colors bg-[#545553] text-white"
             title={toolMode === 'hand' ? 'Hand tool' : 'Move'}
           >
             {toolMode === 'hand' ? <Hand size={18} /> : <MousePointer2 size={18} />}

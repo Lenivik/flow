@@ -68,8 +68,11 @@ export const api = {
   generateFlux2Flash: (prompt: string, nodeId?: string, settings?: Record<string, string>) =>
     request('/generate/flux2_flash', { method: 'POST', body: JSON.stringify({ prompt, node_id: nodeId, ...settings }) }),
 
-  removeBg: (sourceImageId: number, nodeId?: string) =>
-    request('/generate/remove_bg', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId }) }),
+  generateFlux2Edit: (prompt: string, sourceImageId?: number, nodeId?: string, settings?: Record<string, string>, captureDataUrl?: string) =>
+    request('/generate/flux2_edit', { method: 'POST', body: JSON.stringify({ prompt, source_image_id: sourceImageId, capture_data: captureDataUrl, node_id: nodeId, ...settings }) }),
+
+  removeBg: (sourceImageId?: number, nodeId?: string, captureDataUrl?: string) =>
+    request('/generate/remove_bg', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId, capture_data: captureDataUrl }) }),
 
   generateTrellis: (sourceImageId: number, nodeId?: string, settings?: Record<string, unknown>) =>
     request('/generate/trellis', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId, ...settings }) }),

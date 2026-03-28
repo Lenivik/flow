@@ -33,7 +33,7 @@ body {
 /* Selected node styling — blue outline matching node border-radius */
 .react-flow__node.selected > div,
 .react-flow__node.selected > div:first-child {
-  box-shadow: 0 0 0 2px #3b82f6;
+  box-shadow: 0 0 0 2px #545553;
 }
 
 /* Handle bump — 3 concentric circles: outer ring (color), dark middle, inner dot (color) */
@@ -48,9 +48,9 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 28px;
-  height: 28px;
-  background: var(--handle-color, #a78bfa);
+  width: 15px;
+  height: 15px;
+  background: var(--handle-color, #ADF5FF);
   border-radius: 50%;
   z-index: -2;
 }
@@ -62,26 +62,26 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 20px;
-  height: 20px;
+  width: 11px;
+  height: 11px;
   background: #1a1a1a;
   border-radius: 50%;
   z-index: -1;
 }
 
-/* Purple handles */
+/* Prompt handles */
 .react-flow__handle.handle-purple {
-  --handle-color: #a78bfa;
+  --handle-color: #ADF5FF;
 }
 
-/* Green handles */
+/* Result/input handles */
 .react-flow__handle.handle-green {
-  --handle-color: #34d399;
+  --handle-color: #00FFC5;
 }
 
 /* Connected handle — fill the dark middle ring with the handle color */
 .react-flow__handle.connected::after {
-  background: var(--handle-color, #a78bfa);
+  background: var(--handle-color, #ADF5FF);
 }
 
 /* Edge selection — wider invisible hit area for clicking */

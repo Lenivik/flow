@@ -18,7 +18,7 @@ function TextPromptNode({ id, data }: NodeProps) {
   )
 
   return (
-    <div className={`bg-neutral-900 rounded-xl shadow-2xl min-w-[320px] max-w-[400px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
+    <div className={`bg-[#1a1a1a] border border-[#27272A] rounded-xl shadow-xl min-w-[320px] max-w-[400px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
       <NodeHeader
         title="Prompt"
         locked={locked}
@@ -36,14 +36,14 @@ function TextPromptNode({ id, data }: NodeProps) {
           placeholder="Enter your prompt..."
           rows={5}
           readOnly={locked}
-          className={`w-full bg-neutral-800 rounded-lg px-3 py-2.5 text-sm text-neutral-200 resize-none focus:outline-none transition-colors placeholder-neutral-600 ${locked ? 'opacity-60 cursor-not-allowed' : ''}`}
+          className={`w-full bg-[#222222] border border-[#27272A]/80 rounded-lg px-3 py-2.5 text-sm text-neutral-200 resize-none focus:outline-none transition-colors placeholder-neutral-600 ${locked ? 'opacity-60 cursor-not-allowed' : ''}`}
         />
       </div>
       <Handle
         type="source"
         position={Position.Right}
         id="prompt"
-        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-right-[7px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#ADF5FF] !border-0 !-right-[9px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
         title="Prompt"
       />
     </div>

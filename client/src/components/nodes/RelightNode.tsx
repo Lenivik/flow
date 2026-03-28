@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Play } from 'lucide-react'
 import { SettingsSlider, SettingsDropdown, SettingsCheck } from './NodeSettings'
 import NodeHeader from './NodeHeader'
 import { GridView, NavigationOverlay } from './ImageHistory'
@@ -37,7 +37,7 @@ function RelightNode({ id, data }: NodeProps) {
   }
 
   return (
-    <div className={`bg-neutral-900 rounded-xl shadow-2xl ${locked ? 'ring-1 ring-neutral-700' : ''}`} style={{ width: 352 }}>
+    <div className={`bg-[#1a1a1a] border border-[#27272A] rounded-xl shadow-xl ${locked ? 'ring-1 ring-neutral-700' : ''}`} style={{ width: 320 }}>
       <NodeHeader
         title="Relight 2.0"
         locked={locked}
@@ -49,7 +49,7 @@ function RelightNode({ id, data }: NodeProps) {
         onCloseMenu={() => setMenuOpen(false)}
       />
 
-      <div className="p-4">
+      <div className="flex flex-col p-4 gap-3.5">
         {gridView && history.length > 0 ? (
           <GridView
             history={history}
@@ -60,7 +60,7 @@ function RelightNode({ id, data }: NodeProps) {
         ) : (
           <div className="relative group">
             <div
-              className="w-full rounded-lg overflow-hidden"
+              className="w-full rounded-lg overflow-hidden border border-[#27272A]/80 shadow-inner"
               style={{
                 height: containerHeight,
                 transition: 'height 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -99,6 +99,8 @@ function RelightNode({ id, data }: NodeProps) {
             )}
           </div>
         )}
+
+        <span className="text-[10px] text-gray-500 font-mono bg-[#18181B] px-1.5 py-0.5 rounded border border-[#27272A] w-fit">Image to image</span>
       </div>
 
       {debugSettings && (
@@ -144,26 +146,26 @@ function RelightNode({ id, data }: NodeProps) {
         </div>
       )}
 
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 flex justify-end">
         <button onClick={handleRunModel} disabled={loading || locked}
-          className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white rounded-lg py-2 text-sm font-medium transition-colors">
-          {loading ? (<><Loader2 size={14} className="animate-spin" /> Generating...</>) : 'Run Model'}
+          className="px-3 py-1 bg-[#cccccc] hover:bg-[#e0e0e0] disabled:bg-[#cccccc]/50 disabled:text-[#1C1C1E]/50 text-[#1C1C1E] text-[10px] font-bold rounded-sm flex items-center gap-1.5 transition-colors uppercase">
+          {loading ? (<><Loader2 size={10} className="animate-spin" /> Running</>) : (<><Play size={10} className="fill-current" /> Run</>)}
         </button>
       </div>
 
       <Handle type="target" position={Position.Left} id="prompt"
-        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#ADF5FF] !border-0 !-left-[9px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
         style={{ top: '35%' }} title="Prompt" />
       <Handle type="target" position={Position.Left} id="negative_prompt"
-        className={`!w-2.5 !h-2.5 !bg-purple-400 !border-0 !-left-[7px] handle-purple ${negativeConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#ADF5FF] !border-0 !-left-[9px] handle-purple ${negativeConnections.length > 0 ? 'connected' : ''}`}
         style={{ top: '55%' }} title="Negative Prompt" />
-      <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(35% - 6px)' }}>Prompt</div>
-      <div className="absolute left-3 text-[10px] text-purple-300 font-medium" style={{ top: 'calc(55% - 6px)' }}>Negative</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(35% - 24px)', right: 'calc(100% + 18px)', color: '#ADF5FF' }}>Prompt</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(55% - 24px)', right: 'calc(100% + 18px)', color: '#ADF5FF' }}>Negative</div>
 
       <Handle type="source" position={Position.Right} id="result"
-        className={`!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-right-[7px] handle-green ${resultConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-right-[9px] handle-green ${resultConnections.length > 0 ? 'connected' : ''}`}
         title="Result" />
-      <div className="absolute right-3 text-[10px] text-emerald-300 font-medium" style={{ top: 'calc(50% - 6px)', textAlign: 'right' }}>Result</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(50% - 24px)', left: 'calc(100% + 18px)', color: '#00FFC5' }}>Result</div>
     </div>
   )
 }

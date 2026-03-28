@@ -1,7 +1,7 @@
 import { memo, useState, Suspense, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
-import { Loader2, Download, Box, ZoomIn, ZoomOut, Focus, Maximize2, X } from 'lucide-react'
+import { Loader2, Box, ZoomIn, ZoomOut, Focus, Maximize2, X, Play } from 'lucide-react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, useGLTF, Environment } from '@react-three/drei'
 import * as THREE from 'three'
@@ -43,8 +43,8 @@ function Model({ url, onFitted }: { url: string; onFitted?: (state: CameraState)
   return <primitive object={scene} />
 }
 
-function CameraControls({ controlsRef, defaultState }: { controlsRef: React.RefObject<any>; defaultState: React.RefObject<CameraState | null> }) {
-  const { camera } = useThree()
+function CameraControls({ controlsRef, defaultState, onCapture }: { controlsRef: React.RefObject<any>; defaultState: React.RefObject<CameraState | null>; onCapture?: (dataUrl: string) => void }) {
+  const { camera, gl, scene } = useThree()
 
   const zoom = useCallback((factor: number) => {
     const controls = controlsRef.current
@@ -64,13 +64,45 @@ function CameraControls({ controlsRef, defaultState }: { controlsRef: React.RefO
     controls.update()
   }, [camera, controlsRef, defaultState])
 
+  const capture = useCallback(() => {
+    gl.render(scene, camera)
+    return gl.domElement.toDataURL('image/png')
+  }, [gl, scene, camera])
+
   useEffect(() => {
     if (controlsRef.current) {
       controlsRef.current._zoomIn = () => zoom(0.75)
       controlsRef.current._zoomOut = () => zoom(1.33)
       controlsRef.current._reset = reset
+      controlsRef.current._capture = capture
     }
-  }, [zoom, reset, controlsRef])
+  }, [zoom, reset, capture, controlsRef])
+
+  // Auto-capture when orbit ends (user stops rotating/panning/zooming)
+  useEffect(() => {
+    const controls = controlsRef.current
+    if (!controls || !onCapture) return
+    const handleEnd = () => {
+      const dataUrl = capture()
+      onCapture(dataUrl)
+    }
+    controls.addEventListener('end', handleEnd)
+    return () => controls.removeEventListener('end', handleEnd)
+  }, [controlsRef, onCapture, capture])
+
+  // Initial capture after model loads (next frame so the scene is rendered)
+  const hasCaptured = useRef(false)
+  useEffect(() => {
+    if (!onCapture || hasCaptured.current) return
+    const timer = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const dataUrl = capture()
+        onCapture(dataUrl)
+        hasCaptured.current = true
+      })
+    })
+    return () => cancelAnimationFrame(timer)
+  }, [onCapture, capture])
 
   return null
 }
@@ -96,13 +128,13 @@ function ViewerControls({ controlsRef, onFullscreen }: { controlsRef: React.RefO
   )
 }
 
-function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize }: { url: string; controlsRef: React.RefObject<any>; defaultCameraState: React.MutableRefObject<CameraState | null>; offsetSize?: boolean }) {
+function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize, onCapture }: { url: string; controlsRef: React.RefObject<any>; defaultCameraState: React.MutableRefObject<CameraState | null>; offsetSize?: boolean; onCapture?: (dataUrl: string) => void }) {
   const handleFitted = useCallback((state: CameraState) => {
     defaultCameraState.current = state
   }, [defaultCameraState])
 
   return (
-    <Canvas camera={{ position: [0, 0, 3], fov: 45 }} resize={{ scroll: false, ...(offsetSize ? { offsetSize: true } : {}) }}>
+    <Canvas camera={{ position: [0, 0, 3], fov: 45 }} gl={{ preserveDrawingBuffer: true }} resize={{ scroll: false, ...(offsetSize ? { offsetSize: true } : {}) }}>
       <ambientLight intensity={0.6} />
       <directionalLight position={[5, 5, 5]} intensity={1} />
       <Suspense fallback={null}>
@@ -110,7 +142,7 @@ function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize }: { url:
         <Environment preset="studio" />
       </Suspense>
       <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate makeDefault />
-      <CameraControls controlsRef={controlsRef} defaultState={defaultCameraState} />
+      <CameraControls controlsRef={controlsRef} defaultState={defaultCameraState} onCapture={onCapture} />
     </Canvas>
   )
 }
@@ -155,6 +187,8 @@ function FullscreenViewer({ url, onClose }: { url: string; onClose: () => void }
 
 function TrellisNode({ id, data }: NodeProps) {
   const inputConnections = useNodeConnections({ handleType: 'target', handleId: 'input' })
+  const resultConnections = useNodeConnections({ handleType: 'source', handleId: 'result' })
+  const imageResultConnections = useNodeConnections({ handleType: 'source', handleId: 'image_result' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [gridView, setGridView] = useState(false)
@@ -188,18 +222,16 @@ function TrellisNode({ id, data }: NodeProps) {
     }
   }
 
-  const handleDownload = (url: string, filename: string) => {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.target = '_blank'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-  }
+  // captureUrl is a data URL stored only in React state — never persisted to server
+  // Downstream nodes (Flux2Edit, BgRemoval) receive it inline via the API request
+  const handleViewCapture = useCallback((dataUrl: string) => {
+    setNodes((nds) =>
+      nds.map((n) => n.id === id ? { ...n, data: { ...n.data, captureUrl: dataUrl } } : n),
+    )
+  }, [id, setNodes])
 
   return (
-    <div className={`bg-neutral-900 rounded-xl shadow-2xl ${locked ? 'ring-1 ring-neutral-700' : ''}`} style={{ width: NODE_WIDTH }}>
+    <div className={`bg-[#1a1a1a] border border-[#27272A] rounded-xl shadow-xl ${locked ? 'ring-1 ring-neutral-700' : ''}`} style={{ width: NODE_WIDTH }}>
       <NodeHeader
         title="Trellis"
         icon={<Box size={14} className="text-purple-400" />}
@@ -212,14 +244,14 @@ function TrellisNode({ id, data }: NodeProps) {
         onCloseMenu={() => setMenuOpen(false)}
       />
 
-      <div className="p-4">
+      <div className="flex flex-col p-4 gap-3.5">
         {gridView && history.length > 0 ? (
           <GridView
             history={history}
             imageIndex={imageIndex}
             onSelect={(i) => { navigateModel(i); setGridView(false) }}
             onClose={() => setGridView(false)}
-            renderThumb={(entry, i) => (
+            renderThumb={(_entry, i) => (
               <>
                 <Box size={20} className={i === imageIndex ? 'text-purple-400' : 'text-neutral-500'} />
                 <span className="absolute bottom-0.5 right-1 text-[9px] text-neutral-500 tabular-nums">{i + 1}</span>
@@ -228,8 +260,8 @@ function TrellisNode({ id, data }: NodeProps) {
           />
         ) : modelFile ? (
           <div className="relative group">
-            <div className="w-full rounded-lg overflow-hidden nodrag nowheel" style={{ height: VIEWER_HEIGHT, background: '#1a1a1a' }}>
-              <ThreeScene url={modelFile} controlsRef={controlsRef} defaultCameraState={defaultCameraState} offsetSize />
+            <div className="w-full rounded-lg overflow-hidden border border-[#27272A]/80 shadow-inner nodrag nowheel" style={{ height: VIEWER_HEIGHT, background: '#1a1a1a' }}>
+              <ThreeScene url={modelFile} controlsRef={controlsRef} defaultCameraState={defaultCameraState} offsetSize onCapture={handleViewCapture} />
             </div>
             <ViewerControls controlsRef={controlsRef} onFullscreen={() => setFullscreen(true)} />
             <NavigationOverlay
@@ -259,18 +291,9 @@ function TrellisNode({ id, data }: NodeProps) {
             <Box size={32} className="text-neutral-600" />
           </div>
         )}
-      </div>
 
-      {modelFile && (
-        <div className="px-4 pb-3 nodrag">
-          <button
-            onClick={() => handleDownload(modelFile, `trellis-${Date.now()}.glb`)}
-            className="w-full flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg py-1.5 text-xs font-medium transition-colors"
-          >
-            <Download size={12} /> Download GLB
-          </button>
-        </div>
-      )}
+        <span className="text-[10px] text-gray-500 font-mono bg-[#18181B] px-1.5 py-0.5 rounded border border-[#27272A] w-fit">Image to 3D</span>
+      </div>
 
       {error && (
         <div className="px-4 pb-2">
@@ -278,23 +301,35 @@ function TrellisNode({ id, data }: NodeProps) {
         </div>
       )}
 
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 flex justify-between items-center">
+        {inputConnections.length === 0 && !modelFile ? (
+          <p className="text-[10px] text-neutral-500">Connect an image to generate 3D</p>
+        ) : <div />}
         <button
           onClick={handleRunModel}
           disabled={loading || locked}
-          className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+          className="px-3 py-1 bg-[#cccccc] hover:bg-[#e0e0e0] disabled:bg-[#cccccc]/50 disabled:text-[#1C1C1E]/50 text-[#1C1C1E] text-[10px] font-bold rounded-sm flex items-center gap-1.5 transition-colors uppercase"
         >
-          {loading ? (<><Loader2 size={14} className="animate-spin" /> Generating 3D...</>) : 'Generate 3D'}
+          {loading ? (<><Loader2 size={10} className="animate-spin" /> Running</>) : (<><Play size={10} className="fill-current" /> Run</>)}
         </button>
-        {inputConnections.length === 0 && !modelFile && (
-          <p className="text-[10px] text-neutral-500 mt-2 text-center">Connect an image output to generate 3D</p>
-        )}
       </div>
 
       <Handle type="target" position={Position.Left} id="input"
-        className={`!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-left-[7px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-left-[9px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
         title="Input" />
-      <div className="absolute left-3 text-[10px] text-emerald-300 font-medium" style={{ top: 'calc(50% - 6px)' }}>Input</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(50% - 24px)', right: 'calc(100% + 18px)', color: '#00FFC5' }}>Input</div>
+
+      <Handle type="source" position={Position.Right} id="image_result"
+        style={{ top: '38%' }}
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-right-[9px] handle-green ${imageResultConnections.length > 0 ? 'connected' : ''}`}
+        title="Image Result" />
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(38% - 8px)', left: 'calc(100% + 18px)', color: '#00FFC5' }}>Image</div>
+
+      <Handle type="source" position={Position.Right} id="result"
+        style={{ top: '60%' }}
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-right-[9px] handle-green ${resultConnections.length > 0 ? 'connected' : ''}`}
+        title="3D Result" />
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(60% - 8px)', left: 'calc(100% + 18px)', color: '#00FFC5' }}>3D</div>
 
       {fullscreen && modelFile && (
         <FullscreenViewer url={modelFile} onClose={() => setFullscreen(false)} />

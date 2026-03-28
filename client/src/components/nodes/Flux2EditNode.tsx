@@ -1,37 +1,28 @@
 import { memo } from 'react'
-import { Handle, Position, useNodeConnections, useReactFlow, type NodeProps } from '@xyflow/react'
+import { Handle, Position, useNodeConnections, type NodeProps } from '@xyflow/react'
 import { Loader2, Play } from 'lucide-react'
-import { SettingsDropdown } from './NodeSettings'
 import NodeHeader from './NodeHeader'
 import { GridView, NavigationOverlay } from './ImageHistory'
 import { useNodeActions } from '../../hooks/useNodeActions'
 import { useImageNode } from '../../hooks/useImageNode'
 
-function ImageGenNode({ id, data }: NodeProps) {
+function Flux2EditNode({ id, data }: NodeProps) {
   const promptConnections = useNodeConnections({ handleType: 'target', handleId: 'prompt' })
-  const negativeConnections = useNodeConnections({ handleType: 'target', handleId: 'negative_prompt' })
+  const inputConnections = useNodeConnections({ handleType: 'target', handleId: 'input' })
   const resultConnections = useNodeConnections({ handleType: 'source', handleId: 'result' })
   const locked = !!data.locked
-  const debugSettings = !!data.debugSettings
   const d = data as Record<string, unknown>
   const { menuOpen, setMenuOpen, handleDuplicate, handleLock, handleDelete } = useNodeActions(id, locked)
-  const { setNodes } = useReactFlow()
   const {
     loading, error, imageLoaded, gridView, setGridView,
     history, imageIndex, imageUrl, navigateImage,
     handleRunModel, handleImageLoad, containerHeight,
-  } = useImageNode({ id, data: d, runCallback: 'onRunModel', defaultHeight: 192 })
-
-  const update = (key: string, value: unknown) => {
-    setNodes((nds) =>
-      nds.map((n) => n.id === id ? { ...n, data: { ...n.data, [key]: value } } : n),
-    )
-  }
+  } = useImageNode({ id, data: d, runCallback: 'onRunFlux2Edit', defaultHeight: 192 })
 
   return (
     <div className={`bg-[#1a1a1a] border border-[#27272A] rounded-xl shadow-xl ${locked ? 'ring-1 ring-neutral-700' : ''}`} style={{ width: 320 }}>
       <NodeHeader
-        title="Nano Banana 2"
+        title="Flux 2 Edit"
         locked={locked}
         menuOpen={menuOpen}
         onMenuToggle={() => setMenuOpen(!menuOpen)}
@@ -72,7 +63,7 @@ function ImageGenNode({ id, data }: NodeProps) {
               {imageUrl && (
                 <img
                   src={imageUrl}
-                  alt="Generated"
+                  alt="Edited"
                   onLoad={handleImageLoad}
                   className="w-full rounded-lg"
                   style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.3s ease-in' }}
@@ -92,39 +83,8 @@ function ImageGenNode({ id, data }: NodeProps) {
           </div>
         )}
 
-        <span className="text-[10px] text-gray-500 font-mono bg-[#18181B] px-1.5 py-0.5 rounded border border-[#27272A] w-fit">Text to image</span>
+        <span className="text-[10px] text-gray-500 font-mono bg-[#18181B] px-1.5 py-0.5 rounded border border-[#27272A] w-fit">Image to image</span>
       </div>
-
-      {debugSettings && (
-        <div className="px-4 pb-3 space-y-3 nodrag nowheel">
-          <div className="grid grid-cols-2 gap-2">
-            <SettingsDropdown
-              label="Resolution"
-              value={(d.resolution as string) || '1K'}
-              onChange={(v) => update('resolution', v)}
-              options={[
-                { value: '0.5K', label: '0.5K' },
-                { value: '1K', label: '1K' },
-                { value: '2K', label: '2K' },
-                { value: '4K', label: '4K' },
-              ]}
-            />
-            <SettingsDropdown
-              label="Aspect Ratio"
-              value={(d.aspectRatio as string) || 'auto'}
-              onChange={(v) => update('aspectRatio', v)}
-              options={[
-                { value: 'auto', label: 'Auto' },
-                { value: '1:1', label: '1:1' },
-                { value: '4:3', label: '4:3' },
-                { value: '3:4', label: '3:4' },
-                { value: '16:9', label: '16:9' },
-                { value: '9:16', label: '9:16' },
-              ]}
-            />
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="px-4 pb-2">
@@ -132,7 +92,10 @@ function ImageGenNode({ id, data }: NodeProps) {
         </div>
       )}
 
-      <div className="px-4 pb-4 flex justify-end">
+      <div className="px-4 pb-4 flex justify-between items-center">
+        {inputConnections.length === 0 && !imageUrl ? (
+          <p className="text-[10px] text-neutral-500">Connect an image and prompt to edit</p>
+        ) : <div />}
         <button
           onClick={handleRunModel}
           disabled={loading || locked}
@@ -145,11 +108,11 @@ function ImageGenNode({ id, data }: NodeProps) {
       <Handle type="target" position={Position.Left} id="prompt"
         className={`!w-[7px] !h-[7px] !bg-[#ADF5FF] !border-0 !-left-[9px] handle-purple ${promptConnections.length > 0 ? 'connected' : ''}`}
         style={{ top: '35%' }} title="Prompt" />
-      <Handle type="target" position={Position.Left} id="negative_prompt"
-        className={`!w-[7px] !h-[7px] !bg-[#ADF5FF] !border-0 !-left-[9px] handle-purple ${negativeConnections.length > 0 ? 'connected' : ''}`}
-        style={{ top: '55%' }} title="Negative Prompt" />
+      <Handle type="target" position={Position.Left} id="input"
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-left-[9px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
+        style={{ top: '60%' }} title="Input" />
       <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(35% - 24px)', right: 'calc(100% + 18px)', color: '#ADF5FF' }}>Prompt</div>
-      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(55% - 24px)', right: 'calc(100% + 18px)', color: '#ADF5FF' }}>Negative</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(60% - 24px)', right: 'calc(100% + 18px)', color: '#00FFC5' }}>Image</div>
 
       <Handle type="source" position={Position.Right} id="result"
         className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-right-[9px] handle-green ${resultConnections.length > 0 ? 'connected' : ''}`}
@@ -159,4 +122,4 @@ function ImageGenNode({ id, data }: NodeProps) {
   )
 }
 
-export default memo(ImageGenNode)
+export default memo(Flux2EditNode)

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import type { HistoryEntry } from '../components/nodes/ImageHistory'
 
-const IMAGE_WIDTH = 320
+const IMAGE_WIDTH = 288 // node width (320) minus padding (2 × 16)
 
 interface UseImageNodeOptions {
   id: string

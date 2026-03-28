@@ -1,5 +1,5 @@
 class GenerateController < ApplicationController
-  rate_limit to: 30, within: 1.hour, only: %i[image flux2_flash remove_bg trellis]
+  rate_limit to: 30, within: 1.hour, only: %i[image flux2_flash flux2_edit remove_bg trellis]
 
   def image
     prompt = params[:prompt]
@@ -67,9 +67,49 @@ class GenerateController < ApplicationController
     render json: { error: "Image generation failed" }, status: :internal_server_error
   end
 
+  def flux2_edit
+    prompt = params[:prompt]
+    if prompt.blank?
+      return render json: { error: "Prompt is required" }, status: :unprocessable_entity
+    end
+
+    # capture_data is a data URI sent inline from the Trellis viewport capture
+    data_uri = if params[:capture_data].present?
+      params[:capture_data]
+    else
+      source_image = load_source_image
+      "data:#{source_image.mime_type};base64,#{source_image.image_data}"
+    end
+
+    settings = params.permit(
+      :guidance_scale, :num_inference_steps, :image_size,
+      :output_format, :seed, :enable_safety_checker
+    ).to_h
+
+    result = FalFlux2Edit.new(prompt: prompt, image_url: data_uri, settings: settings).call
+
+    node_image = save_result_to_node(result, prompt: prompt)
+
+    render json: {
+      image_data: result[:image_data],
+      mime_type: result[:mime_type],
+      node_image_id: node_image&.id
+    }
+  rescue FalService::ApiError => e
+    Rails.logger.warn("fal.ai API error in Flux 2 Edit: #{e.message}")
+    render json: { error: e.message }, status: :bad_gateway
+  rescue => e
+    Rails.logger.error("Flux 2 Edit failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}")
+    render json: { error: "Image editing failed" }, status: :internal_server_error
+  end
+
   def remove_bg
-    source_image = load_source_image
-    data_uri = "data:#{source_image.mime_type};base64,#{source_image.image_data}"
+    data_uri = if params[:capture_data].present?
+      params[:capture_data]
+    else
+      source_image = load_source_image
+      "data:#{source_image.mime_type};base64,#{source_image.image_data}"
+    end
 
     result = FalBgRemoval.new(image_url: data_uri).call
 

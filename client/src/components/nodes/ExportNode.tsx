@@ -11,22 +11,25 @@ function ExportNode({ id, data }: NodeProps) {
   const locked = !!data.locked
   const { menuOpen, setMenuOpen, handleDuplicate, handleLock, handleDelete } = useNodeActions(id, locked)
 
-  const getImageUrl = () => {
+  const getExportUrl = () => {
     if (inputConnections.length === 0) return undefined
-    const sourceNode = getNode(inputConnections[0].source)
-    return (sourceNode?.data as Record<string, unknown>)?.imageUrl as string | undefined
+    const conn = inputConnections[0]
+    const sourceData = getNode(conn.source)?.data as Record<string, unknown> | undefined
+    if (conn.sourceHandle === 'image_result') return sourceData?.captureUrl as string | undefined
+    if (conn.sourceHandle === 'result') return (sourceData?.modelFile || sourceData?.imageUrl) as string | undefined
+    return sourceData?.imageUrl as string | undefined
   }
 
-  const imageUrl = getImageUrl()
+  const imageUrl = getExportUrl()
 
   const handleDownload = async () => {
-    const currentUrl = getImageUrl()
+    const currentUrl = getExportUrl()
     if (!currentUrl) return
     setDownloading(true)
     try {
       const res = await fetch(currentUrl)
       const blob = await res.blob()
-      const ext = blob.type.split('/')[1] || 'png'
+      const ext = blob.type === 'model/gltf-binary' ? 'glb' : (blob.type.split('/')[1] || 'png')
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -41,7 +44,7 @@ function ExportNode({ id, data }: NodeProps) {
   }
 
   return (
-    <div className={`bg-neutral-900 rounded-xl shadow-2xl min-w-[240px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
+    <div className={`bg-[#1a1a1a] border border-[#27272A] rounded-xl shadow-xl min-w-[240px] ${locked ? 'ring-1 ring-neutral-700' : ''}`}>
       <NodeHeader
         title="Export"
         locked={locked}
@@ -53,37 +56,35 @@ function ExportNode({ id, data }: NodeProps) {
         onCloseMenu={() => setMenuOpen(false)}
       />
 
-      <div className="p-4">
-        <button
-          onClick={handleDownload}
-          disabled={!imageUrl || downloading}
-          className="w-full flex items-center justify-center gap-2 bg-neutral-800 hover:bg-neutral-700 disabled:bg-neutral-800/50 disabled:text-neutral-500 text-neutral-300 rounded-lg py-2.5 text-sm font-medium transition-colors"
-        >
-          {downloading ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Downloading...
-            </>
-          ) : (
-            <>
-              <Download size={16} />
-              Download
-            </>
-          )}
-        </button>
-        {!imageUrl && (
-          <p className="text-[10px] text-neutral-500 mt-2 text-center">Connect an image output to export</p>
-        )}
+      <div className="flex flex-col p-4 gap-3.5">
+        <span className="text-[10px] text-gray-500 font-mono bg-[#18181B] px-1.5 py-0.5 rounded border border-[#27272A] w-fit">Utility</span>
+
+        <div className="flex justify-between items-center">
+          {!imageUrl ? (
+            <p className="text-[10px] text-neutral-500">Connect an image or 3D model to export</p>
+          ) : <div />}
+          <button
+            onClick={handleDownload}
+            disabled={!imageUrl || downloading}
+            className="px-3 py-1 bg-[#cccccc] hover:bg-[#e0e0e0] disabled:bg-[#cccccc]/50 disabled:text-[#1C1C1E]/50 text-[#1C1C1E] text-[10px] font-bold rounded-sm flex items-center gap-1.5 transition-colors uppercase"
+          >
+            {downloading ? (
+              <><Loader2 size={10} className="animate-spin" /> Saving</>
+            ) : (
+              <><Download size={10} /> Export</>
+            )}
+          </button>
+        </div>
       </div>
 
       <Handle
         type="target"
         position={Position.Left}
         id="input"
-        className={`!w-2.5 !h-2.5 !bg-emerald-400 !border-0 !-left-[7px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
+        className={`!w-[7px] !h-[7px] !bg-[#00FFC5] !border-0 !-left-[9px] handle-green ${inputConnections.length > 0 ? 'connected' : ''}`}
         title="Input"
       />
-      <div className="absolute left-3 text-[10px] text-emerald-300 font-medium" style={{ top: 'calc(50% - 6px)' }}>Input</div>
+      <div className="absolute text-[10px] bg-black/30 backdrop-blur-sm px-1 rounded font-medium" style={{ top: 'calc(50% - 24px)', right: 'calc(100% + 18px)', color: '#00FFC5' }}>Input</div>
     </div>
   )
 }

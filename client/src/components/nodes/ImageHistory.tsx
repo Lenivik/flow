@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, Grid3X3, Maximize2 } from 'lucide-react'
 
 export type HistoryEntry = { id: number; url: string }

@@ -21,7 +21,12 @@
       "Bash(ruby -c app/controllers/generate_controller.rb)",
       "Bash(ruby -c app/controllers/canvas_controller.rb)",
       "Bash(ruby -c app/controllers/concerns/authentication.rb)",
-      "Bash(ruby -c app/controllers/projects_controller.rb)"
+      "Bash(ruby -c app/controllers/projects_controller.rb)",
+      "Bash(curl -s -H \"Authorization: Key $FAL_KEY\" https://fal.run/fal-ai/flux-2/edit/openapi.json)",
+      "Bash(curl -s 'https://fal.ai/models/fal-ai/flux-2/edit/api')",
+      "Bash(curl -s -H \"Authorization: Key $FAL_KEY\" 'https://fal.run/fal-ai/flux-2/edit/openapi.json')",
+      "WebFetch(domain:fal.ai)",
+      "Bash(npm run:*)"
     ]
   }
 }
