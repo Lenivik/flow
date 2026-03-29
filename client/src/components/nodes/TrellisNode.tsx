@@ -75,34 +75,24 @@ function CameraControls({ controlsRef, defaultState, onCapture }: { controlsRef:
       controlsRef.current._zoomOut = () => zoom(1.33)
       controlsRef.current._reset = reset
       controlsRef.current._capture = capture
+      // Called by ThreeScene.handleFitted after model is loaded + camera positioned
+      controlsRef.current._captureOnReady = () => {
+        const id = requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (onCapture) onCapture(capture())
+        }))
+        return id
+      }
     }
-  }, [zoom, reset, capture, controlsRef])
+  }, [zoom, reset, capture, controlsRef, onCapture])
 
-  // Auto-capture when orbit ends (user stops rotating/panning/zooming)
+  // Auto-capture when orbit ends
   useEffect(() => {
     const controls = controlsRef.current
     if (!controls || !onCapture) return
-    const handleEnd = () => {
-      const dataUrl = capture()
-      onCapture(dataUrl)
-    }
+    const handleEnd = () => onCapture(capture())
     controls.addEventListener('end', handleEnd)
     return () => controls.removeEventListener('end', handleEnd)
   }, [controlsRef, onCapture, capture])
-
-  // Initial capture after model loads (next frame so the scene is rendered)
-  const hasCaptured = useRef(false)
-  useEffect(() => {
-    if (!onCapture || hasCaptured.current) return
-    const timer = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const dataUrl = capture()
-        onCapture(dataUrl)
-        hasCaptured.current = true
-      })
-    })
-    return () => cancelAnimationFrame(timer)
-  }, [onCapture, capture])
 
   return null
 }
@@ -128,10 +118,12 @@ function ViewerControls({ controlsRef, onFullscreen }: { controlsRef: React.RefO
   )
 }
 
-function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize, onCapture }: { url: string; controlsRef: React.RefObject<any>; defaultCameraState: React.MutableRefObject<CameraState | null>; offsetSize?: boolean; onCapture?: (dataUrl: string) => void }) {
+function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize, onCapture, interactive }: { url: string; controlsRef: React.RefObject<any>; defaultCameraState: React.MutableRefObject<CameraState | null>; offsetSize?: boolean; onCapture?: (dataUrl: string) => void; interactive?: boolean }) {
   const handleFitted = useCallback((state: CameraState) => {
     defaultCameraState.current = state
-  }, [defaultCameraState])
+    // Capture after the model is loaded and camera is positioned (not a blank frame)
+    controlsRef.current?._captureOnReady?.()
+  }, [defaultCameraState, controlsRef])
 
   return (
     <Canvas camera={{ position: [0, 0, 3], fov: 45 }} gl={{ preserveDrawingBuffer: true }} resize={{ scroll: false, ...(offsetSize ? { offsetSize: true } : {}) }}>
@@ -141,7 +133,7 @@ function ThreeScene({ url, controlsRef, defaultCameraState, offsetSize, onCaptur
         <Model url={url} onFitted={handleFitted} />
         <Environment preset="studio" />
       </Suspense>
-      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate makeDefault />
+      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate makeDefault enabled={!!interactive} />
       <CameraControls controlsRef={controlsRef} defaultState={defaultCameraState} onCapture={onCapture} />
     </Canvas>
   )
@@ -185,7 +177,7 @@ function FullscreenViewer({ url, onClose }: { url: string; onClose: () => void }
   )
 }
 
-function TrellisNode({ id, data }: NodeProps) {
+function TrellisNode({ id, data, selected }: NodeProps) {
   const inputConnections = useNodeConnections({ handleType: 'target', handleId: 'input' })
   const resultConnections = useNodeConnections({ handleType: 'source', handleId: 'result' })
   const imageResultConnections = useNodeConnections({ handleType: 'source', handleId: 'image_result' })
@@ -260,8 +252,8 @@ function TrellisNode({ id, data }: NodeProps) {
           />
         ) : modelFile ? (
           <div className="relative group">
-            <div className="w-full rounded-lg overflow-hidden border border-[#27272A]/80 shadow-inner nodrag nowheel" style={{ height: VIEWER_HEIGHT, background: '#1a1a1a' }}>
-              <ThreeScene url={modelFile} controlsRef={controlsRef} defaultCameraState={defaultCameraState} offsetSize onCapture={handleViewCapture} />
+            <div className={`w-full rounded-lg overflow-hidden border border-[#27272A]/80 shadow-inner nodrag ${selected ? 'nowheel' : ''}`} style={{ height: VIEWER_HEIGHT, background: '#1a1a1a' }}>
+              <ThreeScene url={modelFile} controlsRef={controlsRef} defaultCameraState={defaultCameraState} offsetSize onCapture={handleViewCapture} interactive={selected} />
             </div>
             <ViewerControls controlsRef={controlsRef} onFullscreen={() => setFullscreen(true)} />
             <NavigationOverlay

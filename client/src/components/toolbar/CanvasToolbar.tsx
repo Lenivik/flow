@@ -50,6 +50,7 @@ const MENU_DATA: Category[] = [
         label: 'Utilities',
         models: [
           { label: 'Export', nodeType: 'export', description: 'Download generated images from the canvas.' },
+          { label: '3D Scene', nodeType: 'scene3d', description: 'Compose images and 3D models into a 3D scene with transform gizmos. Output as image.' },
         ],
       },
       {

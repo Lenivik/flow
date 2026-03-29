@@ -33,6 +33,7 @@ import BgRemovalNode from '../components/nodes/BgRemovalNode'
 import TrellisNode from '../components/nodes/TrellisNode'
 import Flux2FlashNode from '../components/nodes/Flux2FlashNode'
 import Flux2EditNode from '../components/nodes/Flux2EditNode'
+import Scene3DNode from '../components/nodes/Scene3DNode'
 import DeletableEdge from '../components/edges/DeletableEdge'
 
 const nodeTypes = {
@@ -43,6 +44,7 @@ const nodeTypes = {
   relight: RelightNode,
   bgRemoval: BgRemovalNode,
   trellis: TrellisNode,
+  scene3d: Scene3DNode,
   export: ExportNode,
 }
 
@@ -52,6 +54,7 @@ const handleColors: Record<string, string> = {
   result: '#00FFC5',
   input: '#00FFC5',
   image_result: '#00FFC5',
+  layers: '#00FFC5',
 }
 
 // Handle color groups for compatibility matching
@@ -61,6 +64,7 @@ const handleColorGroup: Record<string, string> = {
   result: 'green',
   input: 'green',
   image_result: 'green',
+  layers: 'green',
 }
 
 // Node catalog with handle info for drop-to-connect filtering
@@ -106,6 +110,12 @@ const nodeCatalog = [
     label: 'Trellis',
     targetHandles: ['input'],
     sourceHandles: ['result', 'image_result'],
+  },
+  {
+    type: 'scene3d',
+    label: '3D Scene',
+    targetHandles: ['layers'],
+    sourceHandles: ['image_result'],
   },
   {
     type: 'export',
@@ -181,11 +191,22 @@ function CanvasInner() {
     })
   }, [setNodes])
 
+  // Generic patch: merges into node data and persists (strips function callbacks before sending)
+  const handleNodeDataUpdate = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    const node = nodesRef.current.find((n) => n.id === nodeId)
+    if (!node) return
+    const newData = { ...(node.data as Record<string, unknown>), ...patch }
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: newData } : n))
+    const serializable = Object.fromEntries(Object.entries(newData).filter(([, v]) => typeof v !== 'function'))
+    queueRef.current?.push({ type: 'node_update', payload: { id: nodeId, data: serializable } })
+  }, [nodesRef, setNodes])
+
   // Computed here so makeNodeData can capture the current value
   const debugSettings = settingsMode === 'inline'
 
   const makeNodeData = useCallback((extra: Record<string, unknown> = {}) => ({
     onChange: handleNodeDataChange,
+    onDataChange: handleNodeDataUpdate,
     onRunModel: handleRunModel,
     onRunFlux2Flash: handleRunFlux2Flash,
     onRunFlux2Edit: handleRunFlux2Edit,
@@ -193,7 +214,7 @@ function CanvasInner() {
     onRunTrellis: handleRunTrellis,
     debugSettings,
     ...extra,
-  }), [handleNodeDataChange, handleRunModel, handleRunFlux2Flash, handleRunFlux2Edit, handleRunBgRemoval, handleRunTrellis, debugSettings])
+  }), [handleNodeDataChange, handleNodeDataUpdate, handleRunModel, handleRunFlux2Flash, handleRunFlux2Edit, handleRunBgRemoval, handleRunTrellis, debugSettings])
 
   const { projectName, setProjectName } = useCanvasLoad({ id, setNodes, setEdges, makeNodeData, handleColors })
 

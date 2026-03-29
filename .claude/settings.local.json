@@ -26,7 +26,10 @@
       "Bash(curl -s 'https://fal.ai/models/fal-ai/flux-2/edit/api')",
       "Bash(curl -s -H \"Authorization: Key $FAL_KEY\" 'https://fal.run/fal-ai/flux-2/edit/openapi.json')",
       "WebFetch(domain:fal.ai)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep -r TransformControls node_modules/@react-three/drei/types --include=*.d.ts)",
+      "Bash(find node_modules/@react-three/drei -name TransformControls*)",
+      "Bash(node:*)"
     ]
   }
 }

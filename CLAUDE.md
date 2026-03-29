@@ -63,10 +63,11 @@ Key patterns:
 | `flux2Edit` | Flux 2 Edit image-to-image (fal.ai) | `prompt`, `input` | `result` |
 | `relight` | Relight 2.0 (fal.ai) | `prompt`, `negative_prompt` | `result` |
 | `bgRemoval` | Background removal (fal.ai) | `input` | `result` |
-| `trellis` | 3D model generation (fal.ai) | `input` | `result` |
-| `export` | Download image | `input` | — |
+| `trellis` | 3D model generation (fal.ai) | `input` | `result` (GLB), `image_result` (viewport PNG) |
+| `scene3d` | Compose images + 3D models into a 3D scene | `layers` (multi) | `image_result` (viewport PNG) |
+| `export` | Download image or 3D file | `input` | — |
 
-Handle color groups: `prompt` / `negative_prompt` = purple; `input` / `result` = green.
+Handle color groups: `prompt` / `negative_prompt` = purple; `input` / `result` / `image_result` / `layers` = green.
 
 ### API Endpoints
 
