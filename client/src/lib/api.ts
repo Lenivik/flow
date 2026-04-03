@@ -77,6 +77,22 @@ export const api = {
   generateTrellis: (sourceImageId: number, nodeId?: string, settings?: Record<string, unknown>) =>
     request('/generate/trellis', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId, ...settings }) }),
 
+  generateMeshyV6: (sourceImageId: number, nodeId?: string, settings?: Record<string, string>, textureImageId?: number) =>
+    request('/generate/meshy_v6', { method: 'POST', body: JSON.stringify({ source_image_id: sourceImageId, node_id: nodeId, texture_image_id: textureImageId, ...settings }) }),
+
+  uploadImage: async (file: File, nodeId?: string): Promise<{ node_image_id?: number; mime_type: string; error?: string }> => {
+    const token = localStorage.getItem('token')
+    const formData = new FormData()
+    formData.append('image', file)
+    if (nodeId) formData.append('node_id', nodeId)
+    // No Content-Type header — browser sets it automatically with the multipart boundary
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${BASE}/generate/upload_image`, { method: 'POST', headers, body: formData })
+    if (res.status === 401) { localStorage.removeItem('token'); window.location.href = '/login'; throw new Error('Unauthorized') }
+    return res.json()
+  },
+
   getNodeImages: (nodeId: string) => request(`/nodes/${nodeId}/images`),
 
   nodeImageUrl: (imageId: number) => `${BASE}/node_images/${imageId}`,

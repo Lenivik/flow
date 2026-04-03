@@ -107,3 +107,30 @@ export function SidebarSlider({ label, value, min, max, step, onChange }: { labe
     </div>
   )
 }
+
+export function SubNavText({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      value={value ?? ''}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-36 bg-neutral-800 text-[12px] text-neutral-200 rounded-lg px-2.5 py-1 outline-none hover:bg-neutral-700 focus:bg-neutral-700 transition-colors placeholder:text-neutral-600"
+    />
+  )
+}
+
+export function SidebarText({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div>
+      <span className="text-[11px] font-medium text-neutral-400 mb-1.5 block">{label}</span>
+      <input
+        type="text"
+        value={value ?? ''}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-neutral-800 text-xs text-neutral-200 rounded-lg px-3 py-2 outline-none border border-neutral-700 hover:border-neutral-600 focus:border-neutral-500 transition-colors placeholder:text-neutral-600"
+      />
+    </div>
+  )
+}

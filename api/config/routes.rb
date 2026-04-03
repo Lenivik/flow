@@ -14,6 +14,8 @@ Rails.application.routes.draw do
   post "generate/remove_bg", to: "generate#remove_bg"
   post "generate/flux2_edit", to: "generate#flux2_edit"
   post "generate/trellis", to: "generate#trellis"
+  post "generate/meshy_v6", to: "generate#meshy_v6"
+  post "generate/upload_image", to: "generate#upload_image"
   get "node_images/:id", to: "node_images#show"
   get "nodes/:node_id/images", to: "node_images#index"
 

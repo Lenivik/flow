@@ -49,6 +49,7 @@ const MENU_DATA: Category[] = [
         id: 'utilities',
         label: 'Utilities',
         models: [
+          { label: 'Preview', nodeType: 'preview', description: 'Preview an image or 3D model exactly as it will look when exported. Shows file type and resolution.' },
           { label: 'Export', nodeType: 'export', description: 'Download generated images from the canvas.' },
           { label: '3D Scene', nodeType: 'scene3d', description: 'Compose images and 3D models into a 3D scene with transform gizmos. Output as image.' },
         ],
@@ -64,9 +65,10 @@ const MENU_DATA: Category[] = [
         id: 'editing_tools',
         label: 'Editing tools',
         models: [
-          { label: 'Crop', nodeType: null, description: 'Crop images to a specific region.' },
+          { label: 'Import Image', nodeType: 'import', description: 'Upload an image from your device to use as a source in your workflow. Drag an image file onto the canvas to create instantly.' },
+          { label: 'Crop', nodeType: 'crop', description: 'Non-destructive crop with drag handles. Outside-crop area shown as transparent overlay. Live pixel dimensions.' },
           { label: 'Resize', nodeType: null, description: 'Resize images to specific dimensions.' },
-          { label: 'Color Adjust', nodeType: null, description: 'Adjust brightness, contrast, and saturation.' },
+          { label: 'Color Adjust', nodeType: 'colorAdjust', description: 'Adjust brightness, contrast, saturation, and hue in real-time. Changes are applied live as you move the sliders.' },
         ],
       },
       {
@@ -184,6 +186,7 @@ const MENU_DATA: Category[] = [
         label: 'Image to 3D',
         models: [
           { label: 'Trellis', nodeType: 'trellis', description: 'Generate 3D models from a single image.' },
+          { label: 'Meshy v6', nodeType: 'meshyV6', description: 'High-quality image-to-3D with PBR materials, art style, and symmetry control.' },
           { label: 'Meshy (Image)', nodeType: null, description: 'Image-to-3D mesh generation.' },
           { label: 'Era3D', nodeType: null, description: 'Multi-view 3D reconstruction from images.' },
         ],

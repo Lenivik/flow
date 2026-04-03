@@ -34,6 +34,11 @@ import TrellisNode from '../components/nodes/TrellisNode'
 import Flux2FlashNode from '../components/nodes/Flux2FlashNode'
 import Flux2EditNode from '../components/nodes/Flux2EditNode'
 import Scene3DNode from '../components/nodes/Scene3DNode'
+import MeshyV6Node from '../components/nodes/MeshyV6Node'
+import PreviewNode from '../components/nodes/PreviewNode'
+import CropNode from '../components/nodes/CropNode'
+import ColorAdjustNode from '../components/nodes/ColorAdjustNode'
+import ImportNode from '../components/nodes/ImportNode'
 import DeletableEdge from '../components/edges/DeletableEdge'
 
 const nodeTypes = {
@@ -44,7 +49,12 @@ const nodeTypes = {
   relight: RelightNode,
   bgRemoval: BgRemovalNode,
   trellis: TrellisNode,
+  meshyV6: MeshyV6Node,
   scene3d: Scene3DNode,
+  preview: PreviewNode,
+  crop: CropNode,
+  colorAdjust: ColorAdjustNode,
+  import: ImportNode,
   export: ExportNode,
 }
 
@@ -55,6 +65,7 @@ const handleColors: Record<string, string> = {
   input: '#00FFC5',
   image_result: '#00FFC5',
   layers: '#00FFC5',
+  texture: '#00FFC5',
 }
 
 // Handle color groups for compatibility matching
@@ -65,6 +76,7 @@ const handleColorGroup: Record<string, string> = {
   input: 'green',
   image_result: 'green',
   layers: 'green',
+  texture: 'green',
 }
 
 // Node catalog with handle info for drop-to-connect filtering
@@ -112,10 +124,40 @@ const nodeCatalog = [
     sourceHandles: ['result', 'image_result'],
   },
   {
+    type: 'meshyV6',
+    label: 'Meshy v6',
+    targetHandles: ['input', 'texture'],
+    sourceHandles: ['result', 'image_result'],
+  },
+  {
     type: 'scene3d',
     label: '3D Scene',
     targetHandles: ['layers'],
     sourceHandles: ['image_result'],
+  },
+  {
+    type: 'preview',
+    label: 'Preview',
+    targetHandles: ['input'],
+    sourceHandles: [] as string[],
+  },
+  {
+    type: 'crop',
+    label: 'Crop',
+    targetHandles: ['input'],
+    sourceHandles: ['result'],
+  },
+  {
+    type: 'colorAdjust',
+    label: 'Color Adjust',
+    targetHandles: ['input'],
+    sourceHandles: ['result'],
+  },
+  {
+    type: 'import',
+    label: 'Import Image',
+    targetHandles: [] as string[],
+    sourceHandles: ['result'],
   },
   {
     type: 'export',
@@ -142,7 +184,10 @@ function CanvasInner() {
   const viewport = useViewport()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
-  const [toolMode, setToolMode] = useState<ToolMode>('select')
+  const [toolMode, setToolMode] = useState<ToolMode>(() => {
+    const saved = localStorage.getItem('flow_tool_mode')
+    return saved === 'hand' ? 'hand' : 'select'
+  })
   const [editingName, setEditingName] = useState(false)
   const [draftName, setDraftName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -178,7 +223,7 @@ function CanvasInner() {
   useEffect(() => { nodesRef.current = nodes }, [nodes])
   useEffect(() => { edgesRef.current = edges }, [edges])
 
-  const { handleRunModel, handleRunBgRemoval, handleRunTrellis, handleRunFlux2Flash, handleRunFlux2Edit } =
+  const { handleRunModel, handleRunBgRemoval, handleRunTrellis, handleRunFlux2Flash, handleRunFlux2Edit, handleRunMeshyV6 } =
     useRunCallbacks({ nodesRef, edgesRef, setNodes })
 
   const handleNodeDataChange = useCallback((nodeId: string, value: string) => {
@@ -193,11 +238,18 @@ function CanvasInner() {
 
   // Generic patch: merges into node data and persists (strips function callbacks before sending)
   const handleNodeDataUpdate = useCallback((nodeId: string, patch: Record<string, unknown>) => {
+    // Merge inside the functional updater so it always operates on the latest state,
+    // not on a stale snapshot from nodesRef. Pre-computed newData would be overwritten
+    // by concurrent setNodes calls (e.g. from generateOutput) when applied in batch.
+    setNodes((nds) => nds.map((n) => {
+      if (n.id !== nodeId) return n
+      return { ...n, data: { ...(n.data as Record<string, unknown>), ...patch } }
+    }))
+    // For the operation queue, nodesRef is an acceptable stale read — the patch is always included
     const node = nodesRef.current.find((n) => n.id === nodeId)
     if (!node) return
-    const newData = { ...(node.data as Record<string, unknown>), ...patch }
-    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: newData } : n))
-    const serializable = Object.fromEntries(Object.entries(newData).filter(([, v]) => typeof v !== 'function'))
+    const mergedForQueue = { ...(node.data as Record<string, unknown>), ...patch }
+    const serializable = Object.fromEntries(Object.entries(mergedForQueue).filter(([, v]) => typeof v !== 'function'))
     queueRef.current?.push({ type: 'node_update', payload: { id: nodeId, data: serializable } })
   }, [nodesRef, setNodes])
 
@@ -212,9 +264,10 @@ function CanvasInner() {
     onRunFlux2Edit: handleRunFlux2Edit,
     onRunBgRemoval: handleRunBgRemoval,
     onRunTrellis: handleRunTrellis,
+    onRunMeshyV6: handleRunMeshyV6,
     debugSettings,
     ...extra,
-  }), [handleNodeDataChange, handleNodeDataUpdate, handleRunModel, handleRunFlux2Flash, handleRunFlux2Edit, handleRunBgRemoval, handleRunTrellis, debugSettings])
+  }), [handleNodeDataChange, handleNodeDataUpdate, handleRunModel, handleRunFlux2Flash, handleRunFlux2Edit, handleRunBgRemoval, handleRunTrellis, handleRunMeshyV6, debugSettings])
 
   const { projectName, setProjectName } = useCanvasLoad({ id, setNodes, setEdges, makeNodeData, handleColors })
 
@@ -271,6 +324,11 @@ function CanvasInner() {
   useEffect(() => {
     localStorage.setItem('flow_settings_mode', settingsMode)
   }, [settingsMode])
+
+  // Persist tool mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('flow_tool_mode', toolMode)
+  }, [toolMode])
 
   // Close logo menu on outside click
   useEffect(() => {
@@ -502,15 +560,57 @@ function CanvasInner() {
     [screenToFlowPosition, setNodes, makeNodeData],
   )
 
+  // Drag image files directly onto the canvas — creates an ImportNode at the drop point
+  const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+  }, [])
+
+  const handleCanvasDrop = useCallback(
+    async (e: React.DragEvent) => {
+      // Only handle file drops — node/edge drags are internal to React Flow
+      if (!e.dataTransfer.types.includes('Files')) return
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+      if (!files.length) return
+      e.preventDefault()
+
+      for (const file of files) {
+        const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+        const clientId = `temp_${Date.now()}_${Math.random()}`
+        const newNode: Node = { id: clientId, type: 'import', position, data: makeNodeData() }
+        setNodes((nds) => [...nds, newNode])
+        queueRef.current?.push({
+          type: 'node_create',
+          payload: { client_id: clientId, type: 'import', position, data: {} },
+        })
+
+        try {
+          const result = await api.uploadImage(file)
+          if (result.error || !result.node_image_id) continue
+          const blobUrl = await api.fetchNodeImageBlob(result.node_image_id)
+          const newEntry = { id: result.node_image_id, url: blobUrl }
+          setNodes((nds) =>
+            nds.map((n) => {
+              if (n.id !== clientId) return n
+              const nd = n.data as Record<string, unknown>
+              const history = [newEntry]
+              return { ...n, data: { ...nd, imageUrl: blobUrl, activeImageId: result.node_image_id, imageHistory: history, imageIndex: 0 } }
+            }),
+          )
+        } catch { /* upload errors are silent at canvas level — node shows its own error */ }
+      }
+    },
+    [screenToFlowPosition, setNodes, makeNodeData],
+  )
+
   // Detect single selected node for sub-nav
   const selectedNodes = nodes.filter((n) => n.selected)
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
-  const showSubNav = selectedNode?.type === 'imageGen' || selectedNode?.type === 'flux2Flash' || selectedNode?.type === 'flux2Edit' || selectedNode?.type === 'relight' || selectedNode?.type === 'trellis'
+  const showSubNav = selectedNode?.type === 'imageGen' || selectedNode?.type === 'flux2Flash' || selectedNode?.type === 'flux2Edit' || selectedNode?.type === 'relight' || selectedNode?.type === 'trellis' || selectedNode?.type === 'meshyV6' || selectedNode?.type === 'colorAdjust'
 
   const handleRunSelected = () => {
     if (!selectedNode) return
     setRunningSelected(true)
-    const runner = selectedNode.type === 'bgRemoval' ? handleRunBgRemoval : selectedNode.type === 'trellis' ? handleRunTrellis : selectedNode.type === 'flux2Flash' ? handleRunFlux2Flash : selectedNode.type === 'flux2Edit' ? handleRunFlux2Edit : handleRunModel
+    const runner = selectedNode.type === 'bgRemoval' ? handleRunBgRemoval : selectedNode.type === 'trellis' ? handleRunTrellis : selectedNode.type === 'meshyV6' ? handleRunMeshyV6 : selectedNode.type === 'flux2Flash' ? handleRunFlux2Flash : selectedNode.type === 'flux2Edit' ? handleRunFlux2Edit : handleRunModel
     runner(selectedNode.id).finally(() => setRunningSelected(false))
   }
 
@@ -529,7 +629,7 @@ function CanvasInner() {
   )
 
   return (
-    <div className="h-screen w-screen bg-neutral-950 relative">
+    <div className="h-screen w-screen bg-neutral-950 relative" onDragOver={handleCanvasDragOver} onDrop={handleCanvasDrop}>
       {/* Logo pill */}
       <div className="absolute top-4 left-4 z-40 flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-1.5 py-1.5 shadow-2xl">
         <div className="relative" ref={logoMenuRef}>
@@ -695,11 +795,15 @@ function CanvasInner() {
         <div className="absolute bottom-[5.5rem] left-1/2 -translate-x-1/2 z-40">
           <div className="flex items-end gap-3 bg-neutral-900 border border-neutral-800 rounded-2xl px-3 py-2 shadow-2xl">
             <NodeSettingsPanel nodeType={selectedNode.type!} nodeData={selectedNode.data as Record<string, unknown>} onUpdate={updateSelectedNodeData} layout="subnav" />
-            <div className="h-8 w-px bg-neutral-800" />
-            <button onClick={handleRunSelected} disabled={runningSelected} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
-              {runningSelected ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-              {runningSelected ? 'Running...' : 'Run'}
-            </button>
+            {selectedNode.type !== 'colorAdjust' && (
+              <>
+                <div className="h-8 w-px bg-neutral-800" />
+                <button onClick={handleRunSelected} disabled={runningSelected} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-600/50 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
+                  {runningSelected ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                  {runningSelected ? 'Running...' : 'Run'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 type SetNodes = (updater: (nodes: Node[]) => Node[]) => void
 type SetEdges = (edges: Edge[]) => void
 
-const IMAGE_NODE_TYPES = new Set(['imageGen', 'flux2Flash', 'flux2Edit', 'relight', 'bgRemoval', 'trellis'])
+const IMAGE_NODE_TYPES = new Set(['imageGen', 'flux2Flash', 'flux2Edit', 'relight', 'bgRemoval', 'trellis', 'meshyV6', 'import'])
 
 interface NodeImageMeta { id: number; mime_type: string }
 
@@ -29,8 +29,8 @@ export function useCanvasLoad({ id, setNodes, setEdges, makeNodeData, handleColo
       if (data.nodes?.length) {
         const loadedNodes = await Promise.all(data.nodes.map(async (n: { id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }) => {
           const nodeData: Record<string, unknown> = { ...n.data, ...makeNodeData() }
-          // Trellis: skip activeImageId — history loading (filtered by MIME type) sets modelFile
-          if (n.data.activeImageId && n.type !== 'trellis') {
+          // 3D nodes: skip activeImageId — history loading (filtered by MIME type) sets modelFile
+          if (n.data.activeImageId && n.type !== 'trellis' && n.type !== 'meshyV6') {
             try {
               nodeData.imageUrl = await api.fetchNodeImageBlob(n.data.activeImageId as number)
             } catch { /* image may have been deleted */ }
@@ -46,7 +46,8 @@ export function useCanvasLoad({ id, setNodes, setEdges, makeNodeData, handleColo
               if (!images?.length || cancelled) return
 
               // Filter by expected MIME type to guard against mixed content in the DB
-              const filtered = n.type === 'trellis'
+              const is3dNode = n.type === 'trellis' || n.type === 'meshyV6'
+              const filtered = is3dNode
                 ? images.filter((img) => img.mime_type === 'model/gltf-binary')
                 : images.filter((img) => img.mime_type?.startsWith('image/'))
 
@@ -66,7 +67,7 @@ export function useCanvasLoad({ id, setNodes, setEdges, makeNodeData, handleColo
               const validHistory = history.filter((h) => h.url)
               if (!validHistory.length) return
 
-              if (n.type === 'trellis') {
+              if (is3dNode) {
                 // Use the most recent GLB as the active model
                 const latest = validHistory[validHistory.length - 1]
                 setNodes((nds) =>

@@ -1,5 +1,6 @@
 class GenerateController < ApplicationController
-  rate_limit to: 30, within: 1.hour, only: %i[image flux2_flash flux2_edit remove_bg trellis]
+  rate_limit to: 30, within: 1.hour, only: %i[image flux2_flash flux2_edit remove_bg trellis meshy_v6]
+  rate_limit to: 60, within: 1.hour, only: %i[upload_image]
 
   def image
     prompt = params[:prompt]
@@ -152,6 +153,54 @@ class GenerateController < ApplicationController
   rescue => e
     Rails.logger.error("Trellis generation failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}")
     render json: { error: "3D generation failed" }, status: :internal_server_error
+  end
+
+  def meshy_v6
+    source_image = load_source_image
+    data_uri = "data:#{source_image.mime_type};base64,#{source_image.image_data}"
+
+    settings = params.permit(:art_style, :topology, :target_polycount, :symmetry_mode, :pose_mode,
+                             :should_remesh, :should_texture, :enable_pbr, :texture_prompt).to_h
+
+    # Resolve optional texture image from a connected canvas node (secure: scoped to current user)
+    if params[:texture_image_id].present?
+      texture_image = NodeImage.joins(node: { project: :user })
+        .where(projects: { user_id: Current.session.user_id })
+        .find_by(id: params[:texture_image_id])
+      settings["texture_image_url"] = "data:#{texture_image.mime_type};base64,#{texture_image.image_data}" if texture_image
+    end
+
+    result = FalMeshyV6.new(image_url: data_uri, settings: settings).call
+
+    node_image = save_result_to_node(result, prompt: "meshy v6 3d generation")
+
+    render json: {
+      image_data: result[:image_data],
+      mime_type: result[:mime_type],
+      node_image_id: node_image&.id
+    }
+  rescue FalService::ApiError => e
+    Rails.logger.warn("fal.ai API error in Meshy v6: #{e.message}")
+    render json: { error: e.message }, status: :bad_gateway
+  rescue => e
+    Rails.logger.error("Meshy v6 generation failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(10)&.join("\n")}")
+    render json: { error: "3D generation failed" }, status: :internal_server_error
+  end
+
+  def upload_image
+    file = params[:image]
+    return render json: { error: "Image file is required" }, status: :unprocessable_entity unless file.present?
+
+    image_data = Base64.strict_encode64(file.read)
+    mime_type = file.content_type.presence || "image/png"
+
+    result = { image_data: image_data, mime_type: mime_type }
+    node_image = save_result_to_node(result, prompt: "uploaded image")
+
+    render json: { node_image_id: node_image&.id, mime_type: mime_type }
+  rescue => e
+    Rails.logger.error("Image upload failed: #{e.class} - #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
+    render json: { error: "Upload failed" }, status: :internal_server_error
   end
 
   private

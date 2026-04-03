@@ -5,8 +5,9 @@ export type SelectField = { type: 'select'; key: string; label: string; shortLab
 export type SliderField = { type: 'slider'; key: string; label: string; shortLabel?: string; min: number; max: number; step: number }
 export type CheckField  = { type: 'check';  key: string; label: string; shortLabel?: string }
 export type SeedField   = { type: 'seed';   key: string; randomKey: string; label: string; shortLabel?: string; min: number; max: number }
+export type TextField  = { type: 'text';   key: string; label: string; shortLabel?: string; placeholder?: string }
 
-export type FieldDef = SelectField | SliderField | CheckField | SeedField
+export type FieldDef = SelectField | SliderField | CheckField | SeedField | TextField
 
 export interface NodeSettingsConfig {
   label: string
@@ -86,6 +87,55 @@ export const nodeSettings: Record<string, NodeSettingsConfig> = {
         { type: 'select', key: 'outputFormat', label: 'Output Format', shortLabel: 'Format', options: FORMAT_OPTIONS },
         { type: 'check', key: 'enableHRFix', label: 'Enable HR Fix', shortLabel: 'HR Fix' },
         { type: 'check', key: 'enableSafetyChecker', label: 'Safety Checker', shortLabel: 'Safety' },
+      ],
+    ],
+  },
+
+  meshyV6: {
+    label: 'Meshy v6',
+    defaults: {
+      artStyle: 'pbr',
+      topology: 'triangle',
+      targetPolycount: 30000,
+      symmetryMode: 'auto',
+      poseMode: 'none',
+      shouldRemesh: true,
+      shouldTexture: true,
+      enablePbr: false,
+      texturePrompt: '',
+    },
+    groups: [
+      [
+        { type: 'select', key: 'artStyle', label: 'Art Style', shortLabel: 'Style', options: [['pbr', 'PBR'], ['realistic', 'Realistic'], ['sculpture', 'Sculpture'], ['toon', 'Toon']] },
+        { type: 'select', key: 'topology', label: 'Topology', options: [['triangle', 'Triangle'], ['quad', 'Quad']] },
+        { type: 'slider', key: 'targetPolycount', label: 'Target Polycount', shortLabel: 'Polycount', min: 1000, max: 300000, step: 1000 },
+      ],
+      [
+        { type: 'select', key: 'symmetryMode', label: 'Symmetry', options: [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']] },
+        { type: 'select', key: 'poseMode', label: 'Pose Mode', shortLabel: 'Pose', options: [['none', 'None'], ['T', 'T-Pose'], ['A', 'A-Pose']] },
+      ],
+      [
+        { type: 'check', key: 'shouldRemesh', label: 'Should Remesh', shortLabel: 'Remesh' },
+        { type: 'check', key: 'shouldTexture', label: 'Should Texture', shortLabel: 'Texture' },
+        { type: 'check', key: 'enablePbr', label: 'Enable PBR', shortLabel: 'PBR' },
+      ],
+      [
+        { type: 'text', key: 'texturePrompt', label: 'Texture Prompt', shortLabel: 'Tex Prompt', placeholder: 'Describe the texture...' },
+      ],
+    ],
+  },
+
+  colorAdjust: {
+    label: 'Color Adjust',
+    defaults: { brightness: 0, contrast: 0, saturation: 0, hue: 0 },
+    groups: [
+      [
+        { type: 'slider', key: 'brightness', label: 'Brightness', shortLabel: 'Bright', min: -100, max: 100, step: 1 },
+        { type: 'slider', key: 'contrast', label: 'Contrast', shortLabel: 'Contrast', min: -100, max: 100, step: 1 },
+      ],
+      [
+        { type: 'slider', key: 'saturation', label: 'Saturation', shortLabel: 'Sat', min: -100, max: 100, step: 1 },
+        { type: 'slider', key: 'hue', label: 'Hue Rotate', shortLabel: 'Hue', min: -180, max: 180, step: 1 },
       ],
     ],
   },

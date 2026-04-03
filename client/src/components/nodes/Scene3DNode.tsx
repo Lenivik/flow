@@ -1,10 +1,11 @@
 import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, Suspense, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Handle, Position, useNodeConnections, useReactFlow, useNodes, type NodeProps } from '@xyflow/react'
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrbitControls, TransformControls, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { Layers, Move, RotateCw, Maximize2, Camera } from 'lucide-react'
+import { Layers, Move, RotateCw, Maximize2, X } from 'lucide-react'
 import NodeHeader from './NodeHeader'
 import { useNodeActions } from '../../hooks/useNodeActions'
 
@@ -40,7 +41,26 @@ function toDeg(rad: number) { return (rad * 180) / Math.PI }
 
 // ─── ImageSticker — 2D image as a repositionable flat plane ──────────────────
 
-function ImageSticker({ url, selected, onClick }: { url: string; selected: boolean; onClick: () => void }) {
+// Hides all objects tagged userData.selectionUI, renders a clean frame, then restores visibility
+function captureWithoutSelectionUI(
+  gl: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+  onCapture: (dataUrl: string) => void,
+) {
+  const hidden: THREE.Object3D[] = []
+  scene.traverse((obj) => {
+    if (obj.userData.selectionUI && obj.visible) {
+      obj.visible = false
+      hidden.push(obj)
+    }
+  })
+  gl.render(scene, camera)
+  hidden.forEach((obj) => { obj.visible = true })
+  onCapture(gl.domElement.toDataURL('image/png'))
+}
+
+function ImageSticker({ url, selected, onClick, onLoad }: { url: string; selected: boolean; onClick: () => void; onLoad?: () => void }) {
   const [tex, setTex] = useState<THREE.Texture | null>(null)
   const [aspect, setAspect] = useState(1)
 
@@ -55,12 +75,13 @@ function ImageSticker({ url, selected, onClick }: { url: string; selected: boole
         const h = img.naturalHeight || img.height || 1
         setAspect(w / h)
         setTex(t)
+        onLoad?.()
       },
       undefined,
       (err) => console.warn('Scene3D: texture load failed', url, err),
     )
     return () => { setTex(null) }
-  }, [url])
+  }, [url]) // eslint-disable-line react-hooks/exhaustive-deps — onLoad is stable ref
 
   if (!tex) return null
 
@@ -72,7 +93,7 @@ function ImageSticker({ url, selected, onClick }: { url: string; selected: boole
         <meshBasicMaterial map={tex} side={THREE.DoubleSide} transparent alphaTest={0.05} />
       </mesh>
       {selected && (
-        <mesh>
+        <mesh userData={{ selectionUI: true }}>
           <planeGeometry args={[aspect * 2, 2]} />
           <meshBasicMaterial color="#00FFC5" wireframe transparent opacity={0.6} />
         </mesh>
@@ -85,7 +106,7 @@ function ImageSticker({ url, selected, onClick }: { url: string; selected: boole
 // useGLTF caches globally across canvases which breaks WebGL context isolation.
 // Using GLTFLoader directly in a useEffect guarantees fresh context-local objects.
 
-function GlbObject({ url, selected, onClick }: { url: string; selected: boolean; onClick: () => void }) {
+function GlbObject({ url, selected, onClick, onLoad }: { url: string; selected: boolean; onClick: () => void; onLoad?: () => void }) {
   const [sceneObj, setSceneObj] = useState<THREE.Group | null>(null)
 
   useEffect(() => {
@@ -107,12 +128,13 @@ function GlbObject({ url, selected, onClick }: { url: string; selected: boolean;
           if (maxDim > 0) root.scale.setScalar(1 / maxDim)
         }
         setSceneObj(root)
+        onLoad?.()
       },
       undefined,
       (err) => console.warn('Scene3D: GLB load failed', url, err),
     )
     return () => { active = false }
-  }, [url])
+  }, [url]) // eslint-disable-line react-hooks/exhaustive-deps — onLoad is stable ref
 
   if (!sceneObj) return null
 
@@ -120,7 +142,7 @@ function GlbObject({ url, selected, onClick }: { url: string; selected: boolean;
     <group onClick={(e) => { e.stopPropagation(); onClick() }}>
       <primitive object={sceneObj} />
       {selected && (
-        <mesh>
+        <mesh userData={{ selectionUI: true }}>
           <boxGeometry args={[1.15, 1.15, 1.15]} />
           <meshBasicMaterial color="#00FFC5" wireframe opacity={0.5} transparent />
         </mesh>
@@ -133,16 +155,22 @@ function GlbObject({ url, selected, onClick }: { url: string; selected: boolean;
 // The outer group has NO JSX position/rotation/scale props — transforms are
 // applied imperatively via useLayoutEffect so React never fights the gizmo.
 
-function SceneObject({ layer, transform, selected, mode, onSelect, onTransformChange }: {
+function SceneObject({ layer, transform, selected, mode, onSelect, onTransformChange, onLoad }: {
   layer: SceneLayer
   transform: LayerTransform
   selected: boolean
   mode: TransformMode
   onSelect: () => void
   onTransformChange: (t: LayerTransform) => void
+  onLoad?: () => void
 }) {
   const groupRef = useRef<THREE.Group>(null)
   const isDragging = useRef(false)
+  // Stable ref callback — must not be an inline arrow function or React re-calls it every render,
+  // which causes TransformControls to detach/reattach and triggers an infinite update loop.
+  const tcRefCallback = useCallback((tc: any) => {
+    if (tc) tc.userData.selectionUI = true
+  }, [])
 
   // Sync React state → Three.js object. useLayoutEffect fires before paint so
   // there's no frame where the object is at the wrong position. Skip during drag.
@@ -166,24 +194,56 @@ function SceneObject({ layer, transform, selected, mode, onSelect, onTransformCh
     })
   }, [onTransformChange])
 
+  // Fire on every gizmo drag frame so TransformField values update live
+  const handleChange = useCallback(() => {
+    if (!groupRef.current || !isDragging.current) return
+    const o = groupRef.current
+    onTransformChange({
+      position: [o.position.x, o.position.y, o.position.z],
+      rotation: [toDeg(o.rotation.x), toDeg(o.rotation.y), toDeg(o.rotation.z)],
+      scale: [o.scale.x, o.scale.y, o.scale.z],
+    })
+  }, [onTransformChange])
+
   return (
     <>
       <group ref={groupRef}>
         {layer.type === 'image'
-          ? <ImageSticker url={layer.url} selected={selected} onClick={onSelect} />
-          : <GlbObject url={layer.url} selected={selected} onClick={onSelect} />
+          ? <ImageSticker url={layer.url} selected={selected} onClick={onSelect} onLoad={onLoad} />
+          : <GlbObject url={layer.url} selected={selected} onClick={onSelect} onLoad={onLoad} />
         }
       </group>
       {selected && groupRef.current && (
         <TransformControls
+          ref={tcRefCallback}
           object={groupRef as React.RefObject<THREE.Object3D>}
           mode={mode}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
+          onChange={handleChange}
         />
       )}
     </>
   )
+}
+
+// ─── CaptureOnLoad — fires a capture on the next frame when an asset loads ────
+// Uses useFrame so the capture always happens after Three.js has rendered the
+// loaded object. GlbObject / ImageSticker call scheduleCapture() on load.
+
+function CaptureOnLoad({ scheduled, onCapture }: {
+  scheduled: React.MutableRefObject<boolean>
+  onCapture: (dataUrl: string) => void
+}) {
+  const { gl, scene, camera } = useThree()
+
+  useFrame(() => {
+    if (!scheduled.current) return
+    scheduled.current = false
+    captureWithoutSelectionUI(gl, scene, camera, onCapture)
+  })
+
+  return null
 }
 
 // ─── OrbitCapture — stores a PNG snapshot of the viewport after orbit ─────────
@@ -195,8 +255,7 @@ function OrbitCapture({ controlsRef, onCapture }: {
   const { gl, scene, camera } = useThree()
 
   const snap = useCallback(() => {
-    gl.render(scene, camera)
-    onCapture(gl.domElement.toDataURL('image/png'))
+    captureWithoutSelectionUI(gl, scene, camera, onCapture)
   }, [gl, scene, camera, onCapture])
 
   useEffect(() => {
@@ -205,15 +264,6 @@ function OrbitCapture({ controlsRef, onCapture }: {
     ctrl.addEventListener('end', snap)
     return () => ctrl.removeEventListener('end', snap)
   }, [controlsRef, snap])
-
-  // Initial capture after first two frames (model/texture may still be loading,
-  // but this at least captures an empty scene for downstream nodes)
-  const done = useRef(false)
-  useEffect(() => {
-    if (done.current) return
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => { snap(); done.current = true }))
-    return () => cancelAnimationFrame(id)
-  }, [snap])
 
   return null
 }
@@ -249,6 +299,245 @@ function TransformField({ label, values, onChange }: {
         ))}
       </div>
     </div>
+  )
+}
+
+// ─── LayerList — draggable, reorderable sidebar layer list ───────────────────
+// Uses HTML5 drag-and-drop. The `nodrag` class prevents React Flow from
+// intercepting pointer events and treating the drag as a canvas pan.
+
+function LayerList({
+  layers,
+  selectedLayerId,
+  setSelectedLayerId,
+  updateLayerOrder,
+}: {
+  layers: SceneLayer[]
+  selectedLayerId: string | null
+  setSelectedLayerId: (id: string | null) => void
+  updateLayerOrder: (newOrder: string[]) => void
+}) {
+  const [dragLayerId, setDragLayerId] = useState<string | null>(null)
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null)
+
+  if (layers.length === 0) {
+    return (
+      <p className="text-[10px] text-neutral-600 text-center mt-6 px-2 leading-relaxed">
+        Connect images or 3D models to the Layers input
+      </p>
+    )
+  }
+
+  return (
+    <>
+      {layers.map((layer) => (
+        <div
+          key={layer.id}
+          draggable
+          onDragStart={(e) => { e.stopPropagation(); setDragLayerId(layer.id) }}
+          onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null) }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverLayerId(layer.id) }}
+          onDragLeave={(e) => { e.stopPropagation(); if (dragOverLayerId === layer.id) setDragOverLayerId(null) }}
+          onDrop={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (!dragLayerId || dragLayerId === layer.id) return
+            const ids = layers.map((l) => l.id)
+            const fromIdx = ids.indexOf(dragLayerId)
+            const toIdx = ids.indexOf(layer.id)
+            const newOrder = [...ids]
+            newOrder.splice(fromIdx, 1)
+            newOrder.splice(toIdx, 0, dragLayerId)
+            updateLayerOrder(newOrder)
+            setDragLayerId(null)
+            setDragOverLayerId(null)
+          }}
+          className={`nodrag rounded transition-opacity ${dragLayerId === layer.id ? 'opacity-30' : 'opacity-100'} ${
+            dragOverLayerId === layer.id && dragLayerId !== layer.id ? 'ring-1 ring-[#00FFC5]/60' : ''
+          }`}
+        >
+          <button
+            onClick={() => setSelectedLayerId(layer.id === selectedLayerId ? null : layer.id)}
+            className={`w-full text-left px-2 py-1.5 rounded text-[10px] font-medium transition-colors truncate cursor-grab active:cursor-grabbing ${
+              layer.id === selectedLayerId
+                ? 'bg-[#00FFC5]/15 text-[#00FFC5] border border-[#00FFC5]/30'
+                : 'bg-[#111] text-neutral-400 border border-[#27272A] hover:border-neutral-600'
+            }`}
+          >
+            <span className="mr-1 text-[8px] opacity-50">{layer.type === 'model' ? '3D' : 'IMG'}</span>
+            {layer.label}
+          </button>
+        </div>
+      ))}
+    </>
+  )
+}
+
+// ─── FullscreenScene3D — full editing UI expanded to cover the viewport ────────
+// Shares selectedLayerId / transformMode / transforms with the inline node so
+// edits made in fullscreen are reflected when the user closes back to canvas.
+
+function FullscreenScene3D({
+  layers,
+  orderedLayers,
+  transforms,
+  selectedLayerId,
+  setSelectedLayerId,
+  transformMode,
+  setTransformMode,
+  updateTransform,
+  updateLayerOrder,
+  captureScheduledRef,
+  handleCapture,
+  onClose,
+}: {
+  layers: SceneLayer[]
+  orderedLayers: SceneLayer[]
+  transforms: Record<string, LayerTransform>
+  selectedLayerId: string | null
+  setSelectedLayerId: (id: string | null) => void
+  transformMode: TransformMode
+  setTransformMode: (m: TransformMode) => void
+  updateTransform: (lid: string, t: LayerTransform) => void
+  updateLayerOrder: (newOrder: string[]) => void
+  captureScheduledRef: React.MutableRefObject<boolean>
+  handleCapture: (dataUrl: string) => void
+  onClose: () => void
+}) {
+  const fsControlsRef = useRef<any>(null)
+  const scheduleCapture = useCallback(() => { captureScheduledRef.current = true }, [captureScheduledRef])
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  const selectedLayer = layers.find((l) => l.id === selectedLayerId) ?? null
+  const selectedTransform = selectedLayerId ? (transforms[selectedLayerId] || DEFAULT_TRANSFORM) : DEFAULT_TRANSFORM
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-[#1a1a1a] flex flex-col">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#27272A] bg-[#141414] shrink-0">
+        <div className="flex items-center gap-2">
+          <Layers size={14} className="text-emerald-400" />
+          <span className="text-sm font-medium text-neutral-300">3D Scene</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg bg-[#27272A] hover:bg-[#3f3f3f] text-neutral-400 hover:text-white transition-colors"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* ── Body ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left panel */}
+        <div className="flex flex-col border-r border-[#27272A] shrink-0" style={{ width: 240 }}>
+          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 min-h-0">
+            <LayerList
+              layers={orderedLayers}
+              selectedLayerId={selectedLayerId}
+              setSelectedLayerId={setSelectedLayerId}
+              updateLayerOrder={updateLayerOrder}
+            />
+          </div>
+
+          {selectedLayer && (
+            <div className="border-t border-[#27272A] p-2 flex flex-col gap-2 shrink-0">
+              <div className="flex gap-1">
+                {([
+                  { mode: 'translate' as TransformMode, icon: Move, title: 'Move' },
+                  { mode: 'rotate' as TransformMode, icon: RotateCw, title: 'Rotate' },
+                  { mode: 'scale' as TransformMode, icon: Maximize2, title: 'Scale' },
+                ]).map(({ mode, icon: Icon, title }) => (
+                  <button
+                    key={mode}
+                    title={title}
+                    onClick={() => setTransformMode(mode)}
+                    className={`flex-1 flex items-center justify-center py-1.5 rounded transition-colors ${
+                      transformMode === mode
+                        ? 'bg-[#00FFC5]/20 text-[#00FFC5] border border-[#00FFC5]/40'
+                        : 'bg-[#111] text-neutral-500 border border-[#27272A] hover:border-neutral-600'
+                    }`}
+                  >
+                    <Icon size={12} />
+                  </button>
+                ))}
+              </div>
+              <TransformField
+                label="Position"
+                values={selectedTransform.position}
+                onChange={(v) => updateTransform(selectedLayer.id, { ...selectedTransform, position: v })}
+              />
+              <TransformField
+                label="Rotation"
+                values={selectedTransform.rotation}
+                onChange={(v) => updateTransform(selectedLayer.id, { ...selectedTransform, rotation: v })}
+              />
+              <TransformField
+                label="Scale"
+                values={selectedTransform.scale}
+                onChange={(v) => updateTransform(selectedLayer.id, { ...selectedTransform, scale: v })}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* 3D viewport — orbit always enabled in fullscreen */}
+        <div className="flex-1 relative" style={{ background: '#111' }}>
+          <Canvas
+            camera={{ position: [0, 2, 5], fov: 50 }}
+            gl={{ preserveDrawingBuffer: true, antialias: true, alpha: true }}
+            resize={{ scroll: false, offsetSize: true }}
+            onPointerMissed={() => setSelectedLayerId(null)}
+          >
+            <ambientLight intensity={2} />
+            <Environment preset="studio" />
+            {layers.map((layer) => (
+              <SceneObject
+                key={layer.id}
+                layer={layer}
+                transform={transforms[layer.id] || DEFAULT_TRANSFORM}
+                selected={layer.id === selectedLayerId}
+                mode={transformMode}
+                onSelect={() => setSelectedLayerId(layer.id)}
+                onTransformChange={(t) => updateTransform(layer.id, t)}
+                onLoad={scheduleCapture}
+              />
+            ))}
+            <OrbitControls ref={fsControlsRef} enablePan enableZoom enableRotate makeDefault enabled />
+            <OrbitCapture controlsRef={fsControlsRef} onCapture={handleCapture} />
+            <CaptureOnLoad scheduled={captureScheduledRef} onCapture={handleCapture} />
+          </Canvas>
+
+          {/* Transform mode buttons */}
+          <div className="absolute top-3 left-3 flex gap-1 z-10">
+            {([
+              { mode: 'translate' as TransformMode, icon: Move, title: 'Move' },
+              { mode: 'rotate' as TransformMode, icon: RotateCw, title: 'Rotate' },
+              { mode: 'scale' as TransformMode, icon: Maximize2, title: 'Scale' },
+            ]).map(({ mode, icon: Icon, title }) => (
+              <button
+                key={mode}
+                title={title}
+                onClick={() => setTransformMode(mode)}
+                className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                  transformMode === mode
+                    ? 'bg-[#00FFC5] text-black'
+                    : 'bg-black/60 text-neutral-400 hover:text-white hover:bg-black/80'
+                }`}
+              >
+                <Icon size={13} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -305,9 +594,26 @@ function Scene3DNode({ id, data, selected }: NodeProps) {
     onDataChange?.(id, { transforms: newTransforms })
   }, [id, transforms, onDataChange])
 
+  // Layer ordering — persisted in node data so it survives project reload
+  const layerOrder = (d.layerOrder as string[] | undefined) || []
+  const orderedLayers = useMemo(() => {
+    const map = new Map(layers.map((l) => [l.id, l]))
+    const known = layerOrder.filter((lid) => map.has(lid)).map((lid) => map.get(lid)!)
+    const novel = layers.filter((l) => !layerOrder.includes(l.id))
+    return [...known, ...novel]
+  }, [layers, layerOrder])
+
+  const updateLayerOrder = useCallback((newOrder: string[]) => {
+    onDataChange?.(id, { layerOrder: newOrder })
+  }, [id, onDataChange])
+
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
   const [transformMode, setTransformMode] = useState<TransformMode>('translate')
+  const [fullscreen, setFullscreen] = useState(false)
   const controlsRef = useRef<any>(null)
+  // Signals CaptureOnLoad (inside Canvas) to grab a fresh frame on the next useFrame tick
+  const captureScheduledRef = useRef(false)
+  const scheduleCapture = useCallback(() => { captureScheduledRef.current = true }, [])
 
   const handleCapture = useCallback((dataUrl: string) => {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, captureUrl: dataUrl } } : n))
@@ -337,26 +643,12 @@ function Scene3DNode({ id, data, selected }: NodeProps) {
         {/* ── Left panel ── */}
         <div className="flex flex-col border-r border-[#27272A] shrink-0" style={{ width: PANEL_WIDTH }}>
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 min-h-0">
-            {layers.length === 0 ? (
-              <p className="text-[10px] text-neutral-600 text-center mt-6 px-2 leading-relaxed">
-                Connect images or 3D models to the Layers input
-              </p>
-            ) : (
-              layers.map((layer) => (
-                <button
-                  key={layer.id}
-                  onClick={() => setSelectedLayerId(layer.id === selectedLayerId ? null : layer.id)}
-                  className={`w-full text-left px-2 py-1.5 rounded text-[10px] font-medium transition-colors nodrag truncate ${
-                    layer.id === selectedLayerId
-                      ? 'bg-[#00FFC5]/15 text-[#00FFC5] border border-[#00FFC5]/30'
-                      : 'bg-[#111] text-neutral-400 border border-[#27272A] hover:border-neutral-600'
-                  }`}
-                >
-                  <span className="mr-1 text-[8px] opacity-50">{layer.type === 'model' ? '3D' : 'IMG'}</span>
-                  {layer.label}
-                </button>
-              ))
-            )}
+            <LayerList
+              layers={orderedLayers}
+              selectedLayerId={selectedLayerId}
+              setSelectedLayerId={setSelectedLayerId}
+              updateLayerOrder={updateLayerOrder}
+            />
           </div>
 
           {selectedLayer && (
@@ -411,8 +703,8 @@ function Scene3DNode({ id, data, selected }: NodeProps) {
             <ambientLight intensity={2} />
             <Environment preset="studio" />
 
-            {/* All layers always visible — selection only adds gizmo overlay */}
-            {layers.map((layer) => (
+            {/* Render in user-defined order — selection only adds gizmo overlay */}
+            {orderedLayers.map((layer) => (
               <SceneObject
                 key={layer.id}
                 layer={layer}
@@ -421,46 +713,44 @@ function Scene3DNode({ id, data, selected }: NodeProps) {
                 mode={transformMode}
                 onSelect={() => setSelectedLayerId(layer.id)}
                 onTransformChange={(t) => updateTransform(layer.id, t)}
+                onLoad={scheduleCapture}
               />
             ))}
 
             <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate makeDefault enabled={!!selected} />
             <OrbitCapture controlsRef={controlsRef} onCapture={handleCapture} />
+            <CaptureOnLoad scheduled={captureScheduledRef} onCapture={handleCapture} />
           </Canvas>
 
-          {/* T/R/S mode buttons — always visible on canvas */}
+          {/* Transform mode buttons */}
           <div className="absolute top-2 left-2 flex gap-1 z-10">
             {([
-              { mode: 'translate' as TransformMode, label: 'T', title: 'Move' },
-              { mode: 'rotate' as TransformMode, label: 'R', title: 'Rotate' },
-              { mode: 'scale' as TransformMode, label: 'S', title: 'Scale' },
-            ]).map(({ mode, label, title }) => (
+              { mode: 'translate' as TransformMode, icon: Move, title: 'Move' },
+              { mode: 'rotate' as TransformMode, icon: RotateCw, title: 'Rotate' },
+              { mode: 'scale' as TransformMode, icon: Maximize2, title: 'Scale' },
+            ]).map(({ mode, icon: Icon, title }) => (
               <button
                 key={mode}
                 title={title}
                 onClick={(e) => { e.stopPropagation(); setTransformMode(mode) }}
-                className={`w-6 h-6 rounded text-[10px] font-bold transition-colors nodrag ${
+                className={`w-6 h-6 rounded flex items-center justify-center transition-colors nodrag ${
                   transformMode === mode
                     ? 'bg-[#00FFC5] text-black'
                     : 'bg-black/60 text-neutral-400 hover:text-white hover:bg-black/80'
                 }`}
               >
-                {label}
+                <Icon size={11} />
               </button>
             ))}
           </div>
 
-          {/* Capture button */}
+          {/* Fullscreen button */}
           <button
-            title="Capture scene"
-            onClick={(e) => {
-              e.stopPropagation()
-              const canvas = e.currentTarget.parentElement?.querySelector('canvas')
-              if (canvas) handleCapture(canvas.toDataURL('image/png'))
-            }}
+            title="Focus mode"
+            onClick={(e) => { e.stopPropagation(); setFullscreen(true) }}
             className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10 nodrag"
           >
-            <Camera size={12} />
+            <Maximize2 size={12} />
           </button>
         </div>
       </div>
@@ -492,6 +782,23 @@ function Scene3DNode({ id, data, selected }: NodeProps) {
       >
         Image
       </div>
+
+      {fullscreen && (
+        <FullscreenScene3D
+          layers={layers}
+          orderedLayers={orderedLayers}
+          transforms={transforms}
+          selectedLayerId={selectedLayerId}
+          setSelectedLayerId={setSelectedLayerId}
+          transformMode={transformMode}
+          setTransformMode={setTransformMode}
+          updateTransform={updateTransform}
+          updateLayerOrder={updateLayerOrder}
+          captureScheduledRef={captureScheduledRef}
+          handleCapture={handleCapture}
+          onClose={() => setFullscreen(false)}
+        />
+      )}
     </div>
   )
 }

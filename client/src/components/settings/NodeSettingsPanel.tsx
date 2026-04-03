@@ -1,7 +1,7 @@
 import { Loader2, Play, X } from 'lucide-react'
 import { nodeSettings } from '../../lib/nodeSettings'
 import type { FieldDef } from '../../lib/nodeSettings'
-import { SubNavField, SubNavSelect, SubNavSlider, SubNavNumber, SubNavCheck, SidebarDropdown, SidebarSlider } from './SettingsControls'
+import { SubNavField, SubNavSelect, SubNavSlider, SubNavNumber, SubNavCheck, SubNavText, SidebarDropdown, SidebarSlider, SidebarText } from './SettingsControls'
 
 export type PanelLayout = 'attached' | 'subnav' | 'sidebar'
 
@@ -52,6 +52,11 @@ function CompactField({ field, val, onUpdate, numericAs }: {
       </div>
     </SubNavField>
   )
+  if (field.type === 'text') return (
+    <SubNavField label={label}>
+      <SubNavText value={(val(field.key) as string) ?? ''} onChange={(v) => onUpdate(field.key, v)} placeholder={field.placeholder} />
+    </SubNavField>
+  )
   return null
 }
 
@@ -88,6 +93,9 @@ function SidebarField({ field, val, onUpdate }: {
       </div>
     )
   }
+  if (field.type === 'text') return (
+    <SidebarText label={field.label} value={(val(field.key) as string) ?? ''} onChange={(v) => onUpdate(field.key, v)} placeholder={field.placeholder} />
+  )
   return null
 }
 
